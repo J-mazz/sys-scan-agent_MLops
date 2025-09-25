@@ -1,0 +1,14 @@
+# ML Pipeline Requirements for Keras 3/Lion Training
+keras>=3.0.0
+transformers>=4.21.0
+datasets>=2.7.0
+numpy>=1.21.0
+accelerate>=0.20.0
+
+# Backend-specific (choose one)
+tensorflow>=2.15.0  # For TensorFlow backend
+# jax>=0.4.0         # For JAX backend (alternative)
+# torch>=2.0.0       # For PyTorch backend (alternative)
+
+# Optional: for mixed precision training
+tensorflow-addons>=0.21.0
