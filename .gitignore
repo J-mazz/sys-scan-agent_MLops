@@ -172,6 +172,14 @@ tmp/
 # synthetic_data/massive_datasets/
 # synthetic_data/massive_datasets_max/
 
+# TensorFlow/Keras
+*.pb
+*.ckpt
+saved_model/
+checkpoints/
+logs/
+tensorboard/
+
 # ML models and checkpoints
 *.h5
 *.hdf5

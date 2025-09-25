@@ -1,7 +1,6 @@
 import json
 import os
 import gzip
-import hashlib
 from datasets import Dataset, DatasetDict
 from tqdm import tqdm
 
@@ -52,18 +51,13 @@ def preprocess_and_save_data():
             continue
     
     print(f"\n✅ Extracted {len(all_findings)} total findings.")
-    print("\nDeduplicating and formatting findings...")
-    seen_signatures = set()
+    print("\nFormatting findings for training...")
     formatted_records = []
-    for record in tqdm(all_findings, desc="Deduplicating & Formatting"):
-        signature_parts = [f"{key}:{record.get(key)}" for key in sorted(record.keys())]
-        signature = hashlib.md5('|'.join(signature_parts).encode()).hexdigest()
-        if signature not in seen_signatures:
-            seen_signatures.add(signature)
-            formatted_text = f"Analyze the following security finding and provide an assessment:\n\n{json.dumps(record, indent=2)}"
-            formatted_records.append({"text": formatted_text})
+    for record in tqdm(all_findings, desc="Formatting"):
+        formatted_text = f"Analyze the following security finding and provide an assessment:\n\n{json.dumps(record, indent=2)}"
+        formatted_records.append({"text": formatted_text})
 
-    print(f"Found {len(formatted_records)} unique findings to use for training.")
+    print(f"Formatted {len(formatted_records)} findings for training.")
     print("\nCreating, splitting, and saving the dataset...")
     if not formatted_records:
         print("❌ No records found to create a dataset. Exiting.")
