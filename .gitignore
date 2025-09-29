@@ -137,6 +137,10 @@ dmypy.json
 *.rar
 *.tar
 *.zip
+batch_*.json
+correlations.json
+raw_*.json
+*_report.json
 
 # OS generated files
 .DS_Store
