@@ -8,6 +8,7 @@ from schema_verifier import SchemaVerifier
 from coherence_verifier import CoherenceVerifier
 from realism_verifier import RealismVerifier
 from abundance_verifier import AbundanceVerifier
+from diversity_verifier import DiversityVerifier
 
 class VerifierOrchestrator:
     """Orchestrates all verifiers for comprehensive validation."""
@@ -17,7 +18,8 @@ class VerifierOrchestrator:
             SchemaVerifier(),
             CoherenceVerifier(),
             RealismVerifier(),
-            AbundanceVerifier()
+            AbundanceVerifier(),
+            DiversityVerifier()
         ]
 
     def verify(self, data: Dict[str, Any]) -> Tuple[bool, Dict[str, List[str]]]:

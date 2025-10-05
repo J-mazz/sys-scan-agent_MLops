@@ -15,7 +15,7 @@ The synthetic data generation system consists of:
 
 ```
 SyntheticDataPipeline
-├── ProducerRegistry (8 producers)
+├── ProducerRegistry (10 producers)
 │   ├── ProcessProducer
 │   ├── NetworkProducer
 │   ├── KernelParamsProducer
@@ -23,11 +23,14 @@ SyntheticDataPipeline
 │   ├── WorldWritableProducer
 │   ├── SuidProducer
 │   ├── IocProducer
-│   └── MacProducer
-├── CorrelationRegistry (3 correlation producers)
+│   ├── MacProducer
+│   ├── DnsProducer
+│   └── EndpointBehaviorProducer
+├── CorrelationRegistry (4 correlation producers)
 │   ├── ProcessNetworkCorrelationProducer
 │   ├── FileSystemCorrelationProducer
-│   └── KernelCorrelationProducer
+│   ├── KernelCorrelationProducer
+│   └── LangChainCorrelationProducer (optional)
 ├── AdvancedVerificationAgent
 │   ├── Schema Validation
 │   ├── Consistency Check
@@ -185,6 +188,24 @@ Generates MAC status findings:
 - grsecurity configuration
 - TOMOYO Linux status
 
+### DNS Producer
+
+Generates DNS telemetry findings:
+
+- Baseline resolver activity with TTL analysis
+- Watch-listed domain lookups and fast-flux detections
+- Command-and-control beaconing signals
+- Edge-case DNS anomalies for robustness testing
+
+### Endpoint Behavior Producer
+
+Generates endpoint behavioral analytics findings:
+
+- User activity baselines with role context
+- Unusual process spawns, logons, and file modifications
+- Privilege escalation attempts and after-hours behaviour
+- Host-centric anomaly narratives for blue-team triage
+
 ## Verifier Types
 
 ### Schema Verifier
@@ -202,6 +223,10 @@ Ensures findings appear realistic based on real-world patterns.
 ### Abundance Verifier
 
 Prevents over-generation of similar findings.
+
+### Diversity Verifier
+
+Ensures the dataset spans multiple scanner categories and severity bands for richer model training.
 
 ## Data Structure
 
@@ -280,8 +305,8 @@ result = run_synthetic_data_pipeline(
 
 ### Performance Benefits
 
-- **Finding Generation**: 8 producers run in parallel instead of sequentially
-- **Correlation Analysis**: 3 correlation producers run in parallel
+- **Finding Generation**: 10 producers run in parallel instead of sequentially
+- **Correlation Analysis**: Up to 4 correlation producers run in parallel (including LangChain when enabled)
 - **Resource Safety**: Automatic CPU/memory monitoring prevents system overload
 - **Scalability**: Handles large datasets efficiently for cloud deployment
 
@@ -313,6 +338,8 @@ result = run_synthetic_data_pipeline(
 - `suid_producer.py`: SUID/SGID binaries scanner producer
 - `ioc_producer.py`: Indicators of Compromise scanner producer
 - `mac_producer.py`: Mandatory Access Control scanner producer
+- `dns_producer.py`: DNS telemetry findings producer
+- `endpoint_behavior_producer.py`: Endpoint behavioural analytics producer
 
 ### Correlation Producers
 
@@ -320,6 +347,9 @@ result = run_synthetic_data_pipeline(
 - `process_network_correlation_producer.py`: Process-network relationship analysis
 - `filesystem_correlation_producer.py`: File system security correlation analysis
 - `kernel_correlation_producer.py`: Kernel parameter correlation analysis
+- `langchain_correlation_producer.py`: LangChain-assisted high-value correlation synthesis
+
+> **Note:** The LangChain correlation producer activates automatically when `use_langchain=True` and the LangChain packages/API credentials are available. Without LangChain, the pipeline falls back to deterministic correlation logic while keeping the broader workflow intact.
 
 ### Testing & Validation
 
