@@ -34,7 +34,9 @@ def test_complete_pipeline():
         "world_writable": 2,
         "suid": 2,
         "ioc": 2,
-        "mac": 2
+        "mac": 2,
+        "dns": 2,
+        "endpoint_behavior": 2
     }
 
     try:

@@ -12,6 +12,8 @@ from world_writable_producer import WorldWritableProducer
 from suid_producer import SuidProducer
 from ioc_producer import IocProducer
 from mac_producer import MacProducer
+from dns_producer import DnsProducer
+from endpoint_behavior_producer import EndpointBehaviorProducer
 
 # Import parallel processing utilities
 try:
@@ -39,6 +41,8 @@ class ProducerRegistry:
         self.register_producer("suid", SuidProducer())
         self.register_producer("ioc", IocProducer())
         self.register_producer("mac", MacProducer())
+        self.register_producer("dns", DnsProducer())
+        self.register_producer("endpoint_behavior", EndpointBehaviorProducer())
 
     def register_producer(self, name: str, producer: BaseProducer):
         """Register a producer."""

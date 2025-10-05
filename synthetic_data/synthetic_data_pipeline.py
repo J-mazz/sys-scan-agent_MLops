@@ -6,6 +6,8 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import json
 from datetime import datetime
+import time
+import os
 
 from producer_registry import registry
 from correlation_registry import correlation_registry
@@ -30,10 +32,15 @@ class SyntheticDataPipeline:
         self.conservative_parallel = conservative_parallel
         self.gpu_optimized = gpu_optimized
         self.fast_mode = fast_mode
-        self.max_workers = max_workers
+        if max_workers is not None:
+            self.max_workers = max_workers
+        else:
+            cpu_count = os.cpu_count() or 8
+            self.max_workers = min(cpu_count, 8) if cpu_count >= 8 else max(4, cpu_count)
 
         self.producer_registry = registry
         self.correlation_registry = correlation_registry
+        self.correlation_registry.enable_langchain(self.use_langchain)
         self.verification_agent = AdvancedVerificationAgent()
         self.transformation_pipeline = DataTransformationPipeline(use_langchain=use_langchain, fast_mode=fast_mode)
 
@@ -45,7 +52,9 @@ class SyntheticDataPipeline:
             "findings_generated": 0,
             "correlations_generated": 0,
             "verification_passed": False,
-            "transformation_completed": False
+            "transformation_completed": False,
+            "stage_timings": {},
+            "active_producers": self.producer_registry.list_producers()
         }
 
     def execute_pipeline(
@@ -78,7 +87,7 @@ class SyntheticDataPipeline:
         try:
             # Stage 1: Generate findings from all producers
             print("\n📊 Stage 1: Generating Findings")
-            findings = self._execute_finding_generation(producer_counts)
+            findings = self._time_stage("finding_generation", self._execute_finding_generation, producer_counts)
             self.execution_state["findings_generated"] = sum(len(f) for f in findings.values())
 
             if save_intermediate:
@@ -86,7 +95,8 @@ class SyntheticDataPipeline:
 
             # Stage 2: Generate correlations
             print("\n🔗 Stage 2: Analyzing Correlations")
-            correlations = self._execute_correlation_analysis(findings)
+            self.correlation_registry.enable_langchain(self.use_langchain)
+            correlations = self._time_stage("correlation_analysis", self._execute_correlation_analysis, findings)
             self.execution_state["correlations_generated"] = len(correlations)
 
             if save_intermediate:
@@ -94,7 +104,7 @@ class SyntheticDataPipeline:
 
             # Stage 3: Verify data quality
             print("\n✅ Stage 3: Verifying Data Quality")
-            verification_report = self._execute_verification(findings, correlations)
+            verification_report = self._time_stage("verification", self._execute_verification, findings, correlations)
             self.execution_state["verification_passed"] = verification_report.get("overall_status") == "passed"
 
             if save_intermediate:
@@ -102,8 +112,14 @@ class SyntheticDataPipeline:
 
             # Stage 4: Transform and optimize dataset
             print("\n🔄 Stage 4: Transforming Dataset")
-            transformed_dataset = self._execute_transformation(
-                findings, correlations, verification_report, output_format, compress
+            transformed_dataset = self._time_stage(
+                "transformation",
+                self._execute_transformation,
+                findings,
+                correlations,
+                verification_report,
+                output_format,
+                compress
             )
             self.execution_state["transformation_completed"] = True
 
@@ -264,12 +280,21 @@ class SyntheticDataPipeline:
             "performance_metrics": {
                 "execution_time": self._calculate_execution_time(),
                 "findings_per_second": self._calculate_findings_per_second(),
-                "data_size_mb": self._estimate_dataset_size(transformed_dataset)
+                "data_size_mb": self._estimate_dataset_size(transformed_dataset),
+                "stage_timings": self.execution_state.get("stage_timings", {})
             },
             "recommendations": verification_report.get("recommendations", [])
         }
 
         return report
+
+    def _time_stage(self, stage_name: str, func, *args, **kwargs):
+        """Measure stage execution duration and return the function result."""
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        duration = time.perf_counter() - start
+        self.execution_state.setdefault("stage_timings", {})[stage_name] = round(duration, 4)
+        return result
 
     def _calculate_execution_time(self) -> float:
         """Calculate total pipeline execution time in seconds."""

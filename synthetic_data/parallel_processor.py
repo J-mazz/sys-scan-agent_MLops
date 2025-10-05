@@ -1,24 +1,16 @@
-"""
-Simple parallel processing utilities for synthetic data generation.
-Optimized for T4 GPU and high-performance environments.
-"""
+"""Parallel processing utilities optimized for diverse execution environments."""
+
+from __future__ import annotations
 
 import concurrent.futures
-import os
-import multiprocessing
-from typing import List, Dict, Any, Callable, TypeVar, Optional
-from functools import partial
 import logging
-
-T = TypeVar('T')
-R = TypeVar('R')
-
-import concurrent.futures
-import os
 import multiprocessing
-from typing import List, Dict, Any, Callable, TypeVar, Optional
-from functools import partial
-import logging
+import os
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
+
+T = TypeVar("T")
+R = TypeVar("R")
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -45,6 +37,16 @@ def _process_single_correlation_producer(producer_name: str, correlation_produce
         logger.error(f"Error processing correlation producer {producer_name}: {e}")
         return []
 
+
+def _producer_task(payload: Tuple[str, Dict[str, Any], Dict[str, int]]) -> Tuple[str, List[Dict[str, Any]]]:
+    name, producers, counts = payload
+    return _process_single_producer(name, producers, counts)
+
+
+def _correlation_task(payload: Tuple[str, Dict[str, Any], Dict[str, List[Dict[str, Any]]]]) -> Tuple[str, List[Dict[str, Any]]]:
+    name, correlation_producers, findings = payload
+    return name, _process_single_correlation_producer(name, correlation_producers, findings)
+
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -53,7 +55,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 try:
-    import cupy as cp
+    import cupy as cp  # type: ignore
     CUPY_AVAILABLE = True
     print("✅ CuPy available for GPU acceleration")
 except ImportError:
@@ -61,126 +63,110 @@ except ImportError:
     CUPY_AVAILABLE = False
     print("⚠️  CuPy not available - GPU acceleration limited")
 
+
+@dataclass(frozen=True)
+class SystemProfile:
+    """Snapshot of the current host capabilities."""
+
+    cpu_count: int
+    available_memory_gb: float
+    is_gpu: bool
+
 class ParallelProcessor:
-    """Simple parallel processing utility optimized for T4 GPU and high-performance environments."""
+    """System-aware parallel executor with sensible defaults for Azure CPU hosts."""
 
     def __init__(self, conservative_mode: bool = True, gpu_optimized: bool = False, max_workers: Optional[int] = None):
-        """
-        Initialize the parallel processor with system-aware configuration.
-
-        Args:
-            conservative_mode: Whether to use conservative resource usage
-            gpu_optimized: Whether to optimize for GPU environments
-            max_workers: Maximum number of parallel workers (auto-detect if None)
-        """
         self.conservative_mode = conservative_mode
         self.gpu_optimized = gpu_optimized
+        self.profile = self._detect_system_profile()
 
-        # Get system information for worker calculation
-        cpu_count = os.cpu_count() or 8
+        self.max_workers = self._determine_worker_count(max_workers)
+        self.use_processes = self._should_use_processes()
+        self.chunk_size = 64 if self.use_processes else 16
+
+        print(
+            f"🔧 Parallel processor initialized: {self.max_workers} workers "
+            f"(conservative: {conservative_mode}, GPU: {gpu_optimized})"
+        )
+        print(
+            f"   System: {self.profile.cpu_count} CPU cores, "
+            f"{self.profile.available_memory_gb:.1f}GB RAM available"
+        )
+
+    def _detect_system_profile(self) -> SystemProfile:
+        cpu_count = os.cpu_count() or multiprocessing.cpu_count() or 8
         available_memory_gb = self._get_available_memory_gb()
+        return SystemProfile(cpu_count=cpu_count, available_memory_gb=available_memory_gb, is_gpu=_is_gpu_env)
 
-        if max_workers is None:
-            # Auto-detect optimal worker count based on system capabilities
-            if gpu_optimized and _is_gpu_env:
-                # T4 GPU optimization: 15GB VRAM, adjust for lower memory
-                if available_memory_gb >= 32:  # High memory with T4
-                    self.max_workers = max(12, int(cpu_count * 0.8))
-                else:  # Standard memory with T4
-                    self.max_workers = max(8, int(cpu_count * 0.6))
-            elif available_memory_gb >= 32:  # High memory system (32GB+)
-                # High-memory CPU system: use aggressive parallelization
-                if conservative_mode:
-                    self.max_workers = min(max(8, cpu_count // 2), 12)  # 8-12 workers for balance
-                else:
-                    # Scale workers based on available RAM (rough estimate: 2-3GB per worker)
-                    ram_based_workers = max(8, int(available_memory_gb / 3))
-                    self.max_workers = min(ram_based_workers, cpu_count * 2)  # Don't exceed 2x CPU cores
-            elif available_memory_gb >= 16:  # Medium memory system (16-32GB)
-                if conservative_mode:
-                    self.max_workers = min(max(6, cpu_count // 2), 10)  # Allow more workers
-                else:
-                    self.max_workers = min(max(8, int(cpu_count * 0.75)), 14)
-            else:  # Standard memory system (8-16GB) - like local development
-                if conservative_mode:
-                    self.max_workers = min(max(4, cpu_count // 2), 6)  # Allow up to 6 workers
-                else:
-                    # For 8-core systems, use more workers even with standard RAM
-                    self.max_workers = min(max(6, int(cpu_count * 0.75)), 10)
+    def _determine_worker_count(self, override: Optional[int]) -> int:
+        if override is not None:
+            return max(1, override)
+
+        cpu_count = self.profile.cpu_count
+        mem = self.profile.available_memory_gb
+
+        # Tailor defaults for 8-core / 16GB Azure CPU hosts
+        if cpu_count >= 8 and 12 <= mem <= 24:
+            target = 8 if not self.conservative_mode else 6
+        elif cpu_count >= 16 and mem >= 32:
+            target = min(cpu_count, int(mem // 2))
         else:
-            self.max_workers = max_workers
+            target = min(cpu_count, max(4, int(mem // 2)))
 
-        # Use ProcessPoolExecutor for CPU-bound tasks when we have enough workers
-        if (available_memory_gb >= 8 and self.max_workers >= 6) or self.max_workers > 8:
-            self.use_processes = True
-            self.chunk_size = 50  # Moderate chunks for local systems
-        else:
-            self.use_processes = False
-            self.chunk_size = 10
+        if self.gpu_optimized and self.profile.is_gpu:
+            target = min(max(4, target), cpu_count * 2)
 
-        print(f"🔧 Parallel processor initialized: {self.max_workers} workers (conservative: {conservative_mode}, GPU: {gpu_optimized})")
-        print(f"   System: {os.cpu_count()} CPU cores, {available_memory_gb:.1f}GB RAM available")
+        return max(1, target)
+
+    def _should_use_processes(self) -> bool:
+        if self.profile.available_memory_gb < 8:
+            return False
+        if self.gpu_optimized and self.profile.is_gpu:
+            return True
+        return self.max_workers >= 4
 
     def _get_available_memory_gb(self) -> float:
         """Get available memory in GB."""
         if PSUTIL_AVAILABLE and psutil is not None:
             try:
                 mem = psutil.virtual_memory()
-                return mem.available / (1024 ** 3)  # Convert to GB
-            except:
-                pass
-        return 8.0  # Fallback assumption
+                return mem.available / (1024 ** 3)
+            except Exception:
+                logger.debug("psutil memory probe failed", exc_info=True)
+        return 8.0
 
     def _check_system_resources(self) -> bool:
         """Check if system has sufficient resources for parallel processing."""
         if not PSUTIL_AVAILABLE or psutil is None:
-            return True  # Skip resource checks if psutil not available
+            return True
 
         try:
             available_memory_gb = self._get_available_memory_gb()
+            cpu_percent = psutil.cpu_percent(interval=0.2)
 
-            # Check CPU usage - be less aggressive for high-memory systems
-            cpu_percent = psutil.cpu_percent(interval=1)
-            if available_memory_gb >= 32:  # High memory system
-                cpu_threshold = 95  # Allow higher CPU usage
-            elif available_memory_gb >= 16:  # Medium memory system
-                cpu_threshold = 90
-            else:  # Low memory system
-                cpu_threshold = 85
-
+            cpu_threshold = 95 if available_memory_gb >= 32 else 90 if available_memory_gb >= 16 else 85
             if cpu_percent > cpu_threshold:
-                print(f"⚠️  High CPU usage detected ({cpu_percent:.1f}%), reducing workers")
+                print(f"⚠️  High CPU usage detected ({cpu_percent:.1f}%), throttling workers")
                 self.max_workers = max(1, self.max_workers // 2)
                 return False
 
-            # Check memory usage - scale thresholds based on available RAM
             memory = psutil.virtual_memory()
-            if self.gpu_optimized and _is_gpu_env:
-                # T4 has 15GB VRAM, be more conservative
-                memory_threshold = 85  # Lower threshold for T4
-            elif available_memory_gb >= 32:
-                memory_threshold = 95  # Allow using more RAM on high-memory systems
-            elif available_memory_gb >= 16:
-                memory_threshold = 90
-            else:
-                memory_threshold = 85
-
+            memory_threshold = 80 if available_memory_gb < 12 else 90
             if memory.percent > memory_threshold:
-                print(f"⚠️  High memory usage detected ({memory.percent:.1f}%), reducing workers")
+                print(f"⚠️  High memory usage detected ({memory.percent:.1f}%), throttling workers")
                 self.max_workers = max(1, self.max_workers // 2)
                 return False
 
             return True
-        except Exception as e:
-            print(f"⚠️  Resource check failed: {e}")
+        except Exception as exc:
+            logger.debug("Resource check failed", exc_info=exc)
             return True
 
     def _get_executor(self, max_workers: int):
         """Get the appropriate executor based on configuration."""
-        if self.use_processes and self.gpu_optimized:
+        if self.use_processes:
             return concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
-        else:
-            return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
     def process_items_parallel(
         self,
@@ -210,33 +196,24 @@ class ParallelProcessor:
         # For small datasets, don't bother with parallel processing
         if len(items) <= 2:
             print("📝 Small dataset detected, processing sequentially")
-            results = []
+            results: List[R] = []
             for item in items:
                 try:
                     result = process_func(item)
                     results.append(result)
-                except Exception as e:
-                    print(f"❌ Error processing item: {e}")
+                except Exception as exc:
+                    print(f"❌ Error processing item: {exc}")
             return results
 
         # GPU optimization: Use ProcessPoolExecutor for CPU-bound tasks
         with self._get_executor(self.max_workers) as executor:
-            # Submit all tasks
-            future_to_item = {
-                executor.submit(process_func, item): item
-                for item in items
-            }
-
-            # Collect results in order
-            results = []
-            for future in concurrent.futures.as_completed(future_to_item):
+            futures = [executor.submit(process_func, item) for item in items]
+            results: List[R] = []
+            for future in concurrent.futures.as_completed(futures):
                 try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    item = future_to_item[future]
-                    print(f"❌ Error processing item {item}: {e}")
-                    continue
+                    results.append(future.result())
+                except Exception as exc:
+                    print(f"❌ Error processing item: {exc}")
 
         print(f"✅ {description} completed: {len(results)}/{len(items)} items processed")
         return results
@@ -269,33 +246,25 @@ class ParallelProcessor:
         # For small datasets, don't bother with parallel processing
         if len(items_dict) <= 2:
             print("📝 Small dataset detected, processing sequentially")
-            results = {}
+            results: Dict[str, R] = {}
             for key, value in items_dict.items():
                 try:
                     result_key, result_value = process_func(key, value)
                     results[result_key] = result_value
-                except Exception as e:
-                    print(f"❌ Error processing {key}: {e}")
+                except Exception as exc:
+                    print(f"❌ Error processing {key}: {exc}")
             return results
 
         # GPU optimization: Process in larger chunks for better throughput
         with self._get_executor(self.max_workers) as executor:
-            # Submit all tasks
-            future_to_pair = {
-                executor.submit(process_func, key, value): (key, value)
-                for key, value in items_dict.items()
-            }
-
-            # Collect results
-            results = {}
-            for future in concurrent.futures.as_completed(future_to_pair):
+            futures = [executor.submit(process_func, key, value) for key, value in items_dict.items()]
+            results: Dict[str, R] = {}
+            for future in concurrent.futures.as_completed(futures):
                 try:
                     result_key, result_value = future.result()
                     results[result_key] = result_value
-                except Exception as e:
-                    pair = future_to_pair[future]
-                    print(f"❌ Error processing {pair[0]}: {e}")
-                    continue
+                except Exception as exc:
+                    print(f"❌ Error processing item: {exc}")
 
         print(f"✅ {description} completed: {len(results)}/{len(items_dict)} items processed")
         return results
@@ -345,25 +314,21 @@ parallel_processor_gpu = ParallelProcessor(conservative_mode=False, gpu_optimize
 # Default processor: prioritize high-memory systems, then GPU, then conservative CPU
 def _get_default_processor():
     """Get the best default processor based on system capabilities."""
-    available_memory_gb = 8.0  # Default fallback
+    available_memory_gb = 8.0
     if PSUTIL_AVAILABLE and psutil is not None:
         try:
             mem = psutil.virtual_memory()
             available_memory_gb = mem.available / (1024 ** 3)
-        except:
-            pass
+        except Exception:
+            logger.debug("psutil memory probe failed", exc_info=True)
 
     if _is_gpu_env:
-        return parallel_processor_gpu  # GPU-optimized
-    elif available_memory_gb >= 32:
-        # High-memory system: use aggressive CPU parallelization
+        return parallel_processor_gpu
+    if available_memory_gb >= 32:
         return ParallelProcessor(conservative_mode=False, gpu_optimized=False)
-    elif available_memory_gb >= 16:
-        # Medium-memory system: balanced approach
+    if available_memory_gb >= 16:
         return parallel_processor_cloud
-    else:
-        # Low-memory system: conservative
-        return parallel_processor_local
+    return parallel_processor_local
 
 parallel_processor = _get_default_processor()
 
@@ -374,15 +339,14 @@ def get_parallel_processor(conservative: bool = True, gpu_optimized: Optional[bo
 
     # Auto-determine conservative mode based on available memory if not specified
     if conservative:
-        available_memory_gb = 8.0  # Default fallback
+        available_memory_gb = 8.0
         if PSUTIL_AVAILABLE and psutil is not None:
             try:
                 mem = psutil.virtual_memory()
                 available_memory_gb = mem.available / (1024 ** 3)
-            except:
-                pass
+            except Exception:
+                logger.debug("psutil memory probe failed", exc_info=True)
 
-        # Use aggressive mode for high-memory systems
         if available_memory_gb >= 32:
             conservative = False
 
@@ -406,31 +370,15 @@ def process_producers_parallel(producers: Dict[str, Any], counts: Dict[str, int]
     Returns:
         Dictionary of producer name -> list of generated items
     """
-    # Get list of producer names to process
     producer_names = list(producers.keys())
 
-    # Process in parallel using module-level function
-    results = {}
-    with processor._get_executor(processor.max_workers) as executor:
-        # Submit all tasks using the module-level function
-        future_to_producer = {
-            executor.submit(_process_single_producer, name, producers, counts): name
-            for name in producer_names
-        }
+    tasks = [(name, producers, counts) for name in producer_names]
 
-        # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_producer):
-            producer_name = future_to_producer[future]
-            try:
-                name, findings = future.result()
-                results[name] = findings
-                logger.debug(f"Completed producer {name}: {len(findings)} findings")
-            except Exception as e:
-                logger.error(f"Producer {producer_name} failed: {e}")
-                results[producer_name] = []
+    results = processor.process_items_parallel(tasks, _producer_task, description=description)
 
-    logger.info(f"Parallel processing completed: {len(results)} producers processed")
-    return results
+    mapped: Dict[str, List[Dict[str, Any]]] = {name: findings for name, findings in results}
+    logger.info("Parallel processing completed: %s producers processed", len(mapped))
+    return mapped
 
 
 def process_correlations_parallel(findings: Dict[str, List[Dict[str, Any]]], correlation_producers: Dict[str, Any], description: str, processor: ParallelProcessor) -> List[Dict[str, Any]]:
@@ -445,27 +393,20 @@ def process_correlations_parallel(findings: Dict[str, List[Dict[str, Any]]], cor
     Returns:
         List of generated correlations
     """
-    # Get list of correlation producer names to process
     producer_names = list(correlation_producers.keys())
 
-    # Process in parallel using module-level function
-    all_correlations = []
-    with processor._get_executor(processor.max_workers) as executor:
-        # Submit all tasks using the module-level function
-        future_to_producer = {
-            executor.submit(_process_single_correlation_producer, name, correlation_producers, findings): name
-            for name in producer_names
-        }
+    tasks = [(name, correlation_producers, findings) for name in producer_names]
 
-        # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_producer):
-            producer_name = future_to_producer[future]
-            try:
-                correlations = future.result()
-                all_correlations.extend(correlations)
-                logger.debug(f"Completed correlation producer {producer_name}: {len(correlations)} correlations")
-            except Exception as e:
-                logger.error(f"Correlation producer {producer_name} failed: {e}")
+    results = processor.process_items_parallel(tasks, _correlation_task, description=description)
 
-    logger.info(f"Parallel correlation processing completed: {len(all_correlations)} total correlations from {len(producer_names)} producers")
-    return all_correlations
+    merged: List[Dict[str, Any]] = []
+    for name, correlations in results:
+        logger.debug("Completed correlation producer %s: %d correlations", name, len(correlations))
+        merged.extend(correlations)
+
+    logger.info(
+        "Parallel correlation processing completed: %d total correlations from %d producers",
+        len(merged),
+        len(producer_names)
+    )
+    return merged

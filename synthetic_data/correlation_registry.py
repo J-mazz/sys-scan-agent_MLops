@@ -7,6 +7,14 @@ from base_correlation_producer import BaseCorrelationProducer
 from process_network_correlation_producer import ProcessNetworkCorrelationProducer
 from filesystem_correlation_producer import FileSystemCorrelationProducer
 from kernel_correlation_producer import KernelCorrelationProducer
+try:
+    from langchain_correlation_producer import (
+        LangChainCorrelationProducer,
+        LANGCHAIN_CORRELATION_AVAILABLE,
+    )
+except ImportError:
+    LANGCHAIN_CORRELATION_AVAILABLE = False
+    LangChainCorrelationProducer = None  # type: ignore[assignment]
 
 # Import parallel processing utilities
 try:
@@ -22,13 +30,32 @@ class CorrelationRegistry:
 
     def __init__(self):
         self.correlation_producers: Dict[str, BaseCorrelationProducer] = {}
+        self.optional_producers: Dict[str, BaseCorrelationProducer] = {}
         self._register_default_producers()
+        self.langchain_enabled = False
+
+    def enable_langchain(self, enabled: bool):
+        if not LANGCHAIN_CORRELATION_AVAILABLE:
+            return
+        if enabled and not self.langchain_enabled:
+            producer = self.optional_producers.get("langchain")
+            if producer is None and LangChainCorrelationProducer is not None:
+                producer = LangChainCorrelationProducer()
+                self.optional_producers["langchain"] = producer
+            if producer is not None:
+                self.correlation_producers.setdefault("langchain", producer)
+            self.langchain_enabled = True
+        elif not enabled and self.langchain_enabled:
+            self.correlation_producers.pop("langchain", None)
+            self.langchain_enabled = False
 
     def _register_default_producers(self):
         """Register all default correlation producers."""
         self.register_correlation_producer("process_network", ProcessNetworkCorrelationProducer())
         self.register_correlation_producer("filesystem", FileSystemCorrelationProducer())
         self.register_correlation_producer("kernel", KernelCorrelationProducer())
+        if LANGCHAIN_CORRELATION_AVAILABLE and LangChainCorrelationProducer is not None:
+            self.optional_producers["langchain"] = LangChainCorrelationProducer()
 
     def register_correlation_producer(self, name: str, producer: BaseCorrelationProducer):
         """Register a correlation producer."""

