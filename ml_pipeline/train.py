@@ -1,19 +1,16 @@
 import os
 import torch
-
-# CPU optimizations for C7i
-os.environ['OMP_NUM_THREADS'] = '8'
-os.environ['MKL_NUM_THREADS'] = '8'
-torch.set_num_threads(8)
-
-# Disable CUDA-specific optimizations
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
-
 import argparse
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
+from transformers.optimization import Lion
 from trl import SFTTrainer, SFTConfig
 from peft import LoraConfig
 from datasets import load_from_disk
+
+# A100 GPU optimizations
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 def train_with_trl():
     """
@@ -55,41 +52,45 @@ def train_with_trl():
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        device_map="cpu",  # Force CPU instead of "auto"
-        torch_dtype=torch.float32,  # Use FP32 for CPU training
+        device_map="auto",  # Use accelerate for device mapping
+        torch_dtype=torch.float16,  # Use FP16 for A100 GPU
         low_cpu_mem_usage=True,
         trust_remote_code=True,
     )
 
-    # Training arguments optimized for CPU training
-    training_args = SFTConfig(
+    # Create Lion optimizer (proven efficient for this dataset)
+    optimizer = Lion(
+        params=model.parameters(),
+        lr=args.learning_rate,
+        betas=(args.beta_1, args.beta_2),
+        weight_decay=args.weight_decay
+    )
+
+    # Training arguments optimized for A100 GPU (24GB VRAM)
+    training_args = TrainingArguments(
         output_dir=f"./checkpoints/{new_model_name}",
         num_train_epochs=args.epochs,
-        per_device_train_batch_size=2,        # Reduce from 8 to 2 for CPU
-        gradient_accumulation_steps=4,        # Maintain effective batch size
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        optim="adamw_torch",                  # Use AdamW instead of Lion for CPU
-        fp16=False,                           # Disable for CPU
-        bf16=False,                           # Disable for CPU
-        logging_steps=100,
+        per_device_train_batch_size=8,        # Larger batch size for A100
+        per_device_eval_batch_size=8,
+        gradient_accumulation_steps=2,        # Effective batch size: 16
+        optim="adamw_torch",  # But we'll override with custom Lion optimizer
         save_steps=500,
-        eval_steps=500,
-        evaluation_strategy="steps",
         save_total_limit=3,
+        logging_steps=100,
+        evaluation_strategy="steps",
+        eval_steps=500,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        report_to=None,                       # Disable wandb/tensorboard
-        dataloader_num_workers=2,             # Reduce from 4 to 2 for CPU
-        dataloader_pin_memory=False,          # Disable for CPU
-        gradient_checkpointing=True,          # Enable for memory savings
+        fp16=True,                           # Mixed precision for A100
+        bf16=False,                          # Use FP16 instead of BF16
+        dataloader_num_workers=4,
+        dataloader_pin_memory=True,          # Enable for GPU
+        gradient_checkpointing=True,         # Memory optimization
         max_grad_norm=1.0,
         warmup_steps=100,
         lr_scheduler_type="cosine",
-        max_seq_length=512,
-        dataset_text_field="text",
-        packing=False,                        # Keep False for simplicity
+        remove_unused_columns=False,
     )
 
     # SFT Trainer
@@ -105,7 +106,10 @@ def train_with_trl():
         peft_config=lora_config,  # Add LoRA configuration
     )
 
-    print("\n🚀 Starting fine-tuning with TRL SFTTrainer and AdamW optimizer on CPU...")
+    # Override optimizer with Lion (proven efficient for this dataset)
+    trainer.optimizer = optimizer
+
+    print("\n🚀 Starting fine-tuning with TRL SFTTrainer and Lion optimizer on A100 GPU...")
 
     trainer.train()
 
@@ -122,10 +126,10 @@ def train_with_trl():
 if __name__ == "__main__":
     train_with_trl()
 
-# SageMaker configuration for AWS training
+# SageMaker configuration for A100 GPU training
 def create_sagemaker_estimator(role_arn=None):
     """
-    Create SageMaker PyTorch estimator for CPU training.
+    Create SageMaker PyTorch estimator for A100 GPU training.
     """
     from sagemaker.pytorch import PyTorch
 
@@ -137,7 +141,7 @@ def create_sagemaker_estimator(role_arn=None):
         entry_point='train.py',
         source_dir='.',
         role=role_arn,
-        instance_type='ml.m7i.2xlarge',      # Perfect for CPU training!
+        instance_type='ml.p4d.24xlarge',      # A100 GPU instance
         instance_count=1,
         framework_version='2.0.1',
         py_version='py310',
@@ -149,14 +153,13 @@ def create_sagemaker_estimator(role_arn=None):
         hyperparameters={
             'epochs': 3,
             'learning_rate': 2e-4,
-            'batch_size': 4,                 # Can increase with 32GB RAM
+            'batch_size': 8,                 # Larger batch for A100
             'beta_1': 0.9,
             'beta_2': 0.99,
             'weight_decay': 0.01,
         },
         environment={
-            'OMP_NUM_THREADS': '8',
-            'MKL_NUM_THREADS': '8',
+            'PYTORCH_CUDA_ALLOC_CONF': 'max_split_size_mb:512',
         }
     )
 
