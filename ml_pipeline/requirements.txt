@@ -1,14 +1,14 @@
-# ML Pipeline Requirements for TRL SFT Training with PyTorch
+# ML Pipeline Requirements for TRL SFT Training with PyTorch (A100 GPU)
 torch>=2.0.0
 transformers>=4.21.0
 datasets>=2.7.0
 trl>=0.7.0
 accelerate>=0.20.0
 numpy>=1.21.0
-peft>=0.4.0  # For LoRA if needed
+peft>=0.4.0  # For LoRA fine-tuning
 
-# Optional: for quantization
-bitsandbytes>=0.41.0
+# GPU optimizations
+bitsandbytes>=0.41.0  # For quantization if needed
 
 # SageMaker training (optional, for cloud deployment)
 sagemaker>=2.100.0
