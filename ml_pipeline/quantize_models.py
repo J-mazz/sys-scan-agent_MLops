@@ -1,206 +1,277 @@
 """
-Quantization and packaging script for fine-tuned models.
+Extreme Quantization Script for Embedded Deployment
 
-This script merges LoRA adapters, converts models to GGUF format,
-and quantizes them for efficient inference.
+Creates ultra-compressed models (<400MB total) split into
+multiple safetensors files (<50MB each) for embedded sys-scan-graph deployment.
 """
 
 import os
-import subprocess
+import torch
+import json
 import shutil
 from pathlib import Path
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoTokenizer
-
-
-def setup_llama_cpp():
-    """Clone and build llama.cpp if not already available."""
-    if not os.path.exists("llama.cpp"):
-        print("Cloning llama.cpp repository...")
-        subprocess.run(["git", "clone", "https://github.com/ggerganov/llama.cpp.git"],
-                      check=True)
-
-    os.chdir("llama.cpp")
-
-    if not os.path.exists("build"):
-        print("Building llama.cpp...")
-        os.makedirs("build", exist_ok=True)
-        os.chdir("build")
-        subprocess.run(["cmake", ".."], check=True)
-        subprocess.run(["make", "-j$(nproc)"], check=True, shell=True)
-        os.chdir("..")
-
-    os.chdir("..")
-    print("✅ llama.cpp setup complete.")
+from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
+import safetensors.torch as safetensors
+from datasets import load_dataset
 
 
 def merge_lora_adapters(adapter_path: str, output_path: str):
-    """
-    Merge LoRA adapters with the base model.
-
-    Args:
-        adapter_path: Path to LoRA adapters
-        output_path: Path to save merged model
-    """
+    """Merge LoRA adapters with base model."""
     print(f"Merging LoRA adapters from {adapter_path}...")
-
-    # Load the model with LoRA adapters
+    
     merged_model = AutoPeftModelForCausalLM.from_pretrained(
-        adapter_path,
-        low_cpu_mem_usage=True,
-        torch_dtype="auto",  # Use float16 for merging
-    )
-
-    # Merge and unload
-    merged_model = merged_model.merge_and_unload()
-
-    # Save the merged model
+        adapter_path, low_cpu_mem_usage=True, torch_dtype=torch.float16
+    ).merge_and_unload()
+    
     os.makedirs(output_path, exist_ok=True)
     merged_model.save_pretrained(output_path, safe_serialization=True)
-
-    # Save tokenizer
+    
     tokenizer = AutoTokenizer.from_pretrained(adapter_path)
     tokenizer.save_pretrained(output_path)
-
+    
     print(f"✅ Merged model saved to {output_path}")
+    return merged_model, tokenizer
 
 
-def convert_to_gguf(model_path: str, output_file: str):
-    """
-    Convert PyTorch model to GGUF format using llama.cpp.
-
-    Args:
-        model_path: Path to the PyTorch model
-        output_file: Output GGUF file path
-    """
-    print(f"Converting model to GGUF: {model_path} -> {output_file}")
-
-    # Ensure we're in the llama.cpp directory
-    original_dir = os.getcwd()
-    os.chdir("llama.cpp")
-
-    try:
-        # Run the conversion script
-        cmd = [
-            "python", "convert.py",
-            f"../{model_path}",
-            "--outfile", f"../{output_file}",
-            "--outtype", "q4_K_M"
-        ]
-
-        subprocess.run(cmd, check=True)
-        print(f"✅ Model converted and quantized to {output_file}")
-
-    finally:
-        os.chdir(original_dir)
-
-
-def quantize_specialist_model():
-    """Quantize the specialist model."""
-    specialist_model_path = "models/specialist_model_fine_tuned"
-    specialist_gguf_path = "models/specialist_model_q4km.gguf"
-
-    if not os.path.exists(specialist_model_path):
-        print(f"❌ Specialist model not found at {specialist_model_path}")
-        return
-
-    print("🔄 Quantizing Specialist model...")
-    convert_to_gguf(specialist_model_path, specialist_gguf_path)
+def extreme_quantize_model(model_path: str, output_path: str, bits: int = 2):
+    """Apply 2-bit GPTQ quantization."""
+    print(f"Applying {bits}-bit GPTQ quantization...")
+    
+    quantize_config = BaseQuantizeConfig(
+        bits=bits, group_size=128, desc_act=True, damp_percent=0.1,
+        sym=True, true_sequential=True
+    )
+    
+    model = AutoGPTQForCausalLM.from_pretrained(
+        model_path, quantize_config=quantize_config, device_map="auto",
+        trust_remote_code=True, low_cpu_mem_usage=True
+    )
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    tokenizer.pad_token = tokenizer.eos_token
+    
+    calib_dataset = load_dataset("c4", split="train", streaming=True).take(512)
+    
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], truncation=True, max_length=512)
+    
+    model.quantize(calib_dataset, tokenize_function=tokenize_function)
+    
+    os.makedirs(output_path, exist_ok=True)
+    model.save_quantized(output_path, use_safetensors=True)
+    tokenizer.save_pretrained(output_path)
+    
+    print(f"✅ {bits}-bit quantized model saved to {output_path}")
+    return model, tokenizer
 
 
-def quantize_generalist_model():
-    """Quantize the generalist model."""
-    generalist_adapter_path = "models/generalist_model_lora_adapters"
-    generalist_merged_path = "models/generalist_model_merged"
-    generalist_gguf_path = "models/generalist_model_q4km.gguf"
+def split_safetensors_into_chunks(model_path: str, output_dir: str, max_chunk_size_mb: int = 50):
+    """Split safetensors into <50MB chunks."""
+    print(f"Splitting into {max_chunk_size_mb}MB chunks...")
+    
+    os.makedirs(output_dir, exist_ok=True)
+    safetensors_files = list(Path(model_path).glob("*.safetensors"))
+    
+    if not safetensors_files:
+        print("❌ No safetensors files found!")
+        return None
+    
+    chunk_count = 0
+    current_chunk = {}
+    current_size = 0
+    
+    for safetensor_file in safetensors_files:
+        tensors = safetensors.load_file(safetensor_file)
+        
+        for tensor_name, tensor in tensors.items():
+            tensor_size_mb = tensor.numel() * tensor.element_size() / (1024 * 1024)
+            
+            if current_size + tensor_size_mb > max_chunk_size_mb and current_chunk:
+                chunk_file = os.path.join(output_dir, f"model_chunk_{chunk_count:03d}.safetensors")
+                safetensors.save_file(current_chunk, chunk_file)
+                chunk_size_mb = sum(t.numel() * t.element_size() for t in current_chunk.values()) / (1024 * 1024)
+                print(f"✅ Saved chunk {chunk_count} ({chunk_size_mb:.1f}MB)")
+                
+                current_chunk = {}
+                current_size = 0
+                chunk_count += 1
+            
+            current_chunk[tensor_name] = tensor
+            current_size += tensor_size_mb
+    
+    if current_chunk:
+        chunk_file = os.path.join(output_dir, f"model_chunk_{chunk_count:03d}.safetensors")
+        safetensors.save_file(current_chunk, chunk_file)
+        chunk_size_mb = sum(t.numel() * t.element_size() for t in current_chunk.values()) / (1024 * 1024)
+        print(f"✅ Saved final chunk {chunk_count} ({chunk_size_mb:.1f}MB)")
+    
+    total_size_mb = sum(os.path.getsize(f) for f in Path(output_dir).glob("*.safetensors")) / (1024 * 1024)
+    print(f"✅ Model split into {chunk_count + 1} chunks, total: {total_size_mb:.1f}MB")
+    return chunk_count + 1, total_size_mb
 
-    if not os.path.exists(generalist_adapter_path):
-        print(f"❌ Generalist LoRA adapters not found at {generalist_adapter_path}")
-        return
 
-    print("🔄 Merging and quantizing Generalist model...")
-
-    # First merge the LoRA adapters
-    merge_lora_adapters(generalist_adapter_path, generalist_merged_path)
-
-    # Then convert to GGUF
-    convert_to_gguf(generalist_merged_path, generalist_gguf_path)
-
-
-def create_model_package():
-    """Create a package with both quantized models."""
-    package_dir = "models/package"
-    os.makedirs(package_dir, exist_ok=True)
-
-    models_to_package = [
-        "models/specialist_model_q4km.gguf",
-        "models/generalist_model_q4km.gguf"
-    ]
-
-    for model_file in models_to_package:
-        if os.path.exists(model_file):
-            shutil.copy2(model_file, package_dir)
-            print(f"✅ Copied {model_file} to package")
-        else:
-            print(f"⚠️  Model file not found: {model_file}")
-
-    # Create a README for the package
-    readme_content = """# Fine-Tuned Model Package
-
-This package contains two quantized models for the Sys-Scan-Graph intelligence layer:
-
-## Models
-
-### Specialist Model (specialist_model_q4km.gguf)
-- Base: Llama 3 8B
-- Fine-tuned on: Security-specific data
-- Use case: Security analysis, threat detection, compliance checking
-- Quantization: Q4_K_M (4-bit with medium quality)
-
-### Generalist Model (generalist_model_q4km.gguf)
-- Base: Mixtral 8x7B Instruct
-- Fine-tuned on: General knowledge data
-- Use case: General analysis, context understanding, report generation
-- Quantization: Q4_K_M (4-bit with medium quality)
-
-## Usage
-
-Load these models using llama.cpp or compatible inference engines for efficient CPU/GPU inference.
-
-## Performance
-
-Both models are optimized for:
-- Low memory footprint
-- Fast inference
-- High accuracy on their respective domains
+def create_deployment_package(model_dir: str, output_package: str):
+    """Create deployment package with metadata."""
+    print(f"Creating deployment package at {output_package}...")
+    
+    os.makedirs(output_package, exist_ok=True)
+    chunk_files = list(Path(model_dir).glob("*.safetensors"))
+    
+    for chunk_file in chunk_files:
+        shutil.copy2(chunk_file, output_package)
+    
+    config_files = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "config.json"]
+    for config_file in config_files:
+        src = os.path.join(model_dir, config_file)
+        if os.path.exists(src):
+            shutil.copy2(src, output_package)
+    
+    metadata = {
+        "model_name": "sys-scan-mistral-agent-extreme-quantized",
+        "base_model": "mistralai/Mistral-7B-Instruct-v0.1",
+        "quantization": "GPTQ-2bit",
+        "total_chunks": len(chunk_files),
+        "max_chunk_size_mb": 50,
+        "total_size_mb": sum(os.path.getsize(f) for f in chunk_files) / (1024 * 1024),
+        "created_date": "2025-01-06",
+        "target_platform": "embedded-sys-scan-graph"
+    }
+    
+    with open(os.path.join(output_package, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+    
+    loading_script = '''"""
+Load extreme quantized model chunks.
+Usage: from load_extreme_quantized import load_model_chunks
 """
+import json
+from pathlib import Path
+import safetensors.torch as safetensors
+from transformers import AutoTokenizer
 
-    with open(os.path.join(package_dir, "README.md"), "w") as f:
-        f.write(readme_content)
+def load_model_chunks(package_path: str):
+    package_path = Path(package_path)
+    with open(package_path / "metadata.json") as f:
+        metadata = json.load(f)
+    print(f"Loading {metadata['model_name']} from {metadata['total_chunks']} chunks...")
+    all_tensors = {}
+    for chunk_file in sorted(package_path.glob("model_chunk_*.safetensors")):
+        print(f"Loading {chunk_file.name}...")
+        all_tensors.update(safetensors.load_file(chunk_file))
+    tokenizer = AutoTokenizer.from_pretrained(package_path)
+    return all_tensors, tokenizer
 
-    print(f"✅ Model package created at {package_dir}")
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1:
+        tensors, tokenizer = load_model_chunks(sys.argv[1])
+        print(f"Loaded {len(tensors)} tensors")
+    else:
+        print("Usage: python load_extreme_quantized.py <package_path>")
+'''
+    
+    with open(os.path.join(output_package, "load_extreme_quantized.py"), "w") as f:
+        f.write(loading_script)
+    
+    readme = f"""# Extreme Quantized Model Package
+
+Model: {metadata['model_name']}
+- Base: {metadata['base_model']}
+- Quantization: {metadata['quantization']}
+- Size: {metadata['total_size_mb']:.1f}MB
+- Chunks: {metadata['total_chunks']} (<50MB each)
+
+Usage:
+```python
+from load_extreme_quantized import load_model_chunks
+tensors, tokenizer = load_model_chunks(".")
+```
+"""
+    
+    with open(os.path.join(output_package, "README.md"), "w") as f:
+        f.write(readme)
+    
+    print(f"✅ Deployment package created at {output_package}")
+
+
+def validate_quantization_results(package_path: str):
+    """Validate quantization meets requirements."""
+    print(f"🔍 Validating results in {package_path}...")
+    
+    package_path = Path(package_path)
+    chunk_files = list(package_path.glob("model_chunk_*.safetensors"))
+    
+    if not chunk_files:
+        print("❌ No chunk files found!")
+        return False
+    
+    max_chunk_size = 50 * 1024 * 1024
+    oversized = []
+    
+    for chunk_file in chunk_files:
+        size_mb = os.path.getsize(chunk_file) / (1024 * 1024)
+        print(f"  - {chunk_file.name}: {size_mb:.1f}MB")
+        if os.path.getsize(chunk_file) > max_chunk_size:
+            oversized.append((chunk_file.name, size_mb))
+    
+    if oversized:
+        print(f"❌ {len(oversized)} chunks >50MB")
+        return False
+    
+    total_size_mb = sum(os.path.getsize(f) for f in chunk_files) / (1024 * 1024)
+    print(f"📊 Total: {total_size_mb:.1f}MB")
+    
+    if total_size_mb >= 400:
+        print("❌ Total size >=400MB!")
+        return False
+    
+    print("✅ Validation passed!")
+    return True
 
 
 def main():
-    """Main function to run quantization and packaging."""
-    print("🚀 Starting Model Quantization and Packaging")
-
+    """Main quantization pipeline."""
+    print("🚀 Extreme Quantization for Embedded Deployment")
+    
+    adapter_path = "sys-scan-mistral-agent-a100-lora"
+    merged_path = "models/merged_model"
+    quantized_path = "models/extreme_quantized"
+    chunks_path = "models/model_chunks"
+    package_path = "models/deployment_package"
+    
     try:
-        # Setup llama.cpp
-        setup_llama_cpp()
-
-        # Quantize models
-        quantize_specialist_model()
-        quantize_generalist_model()
-
-        # Create package
-        create_model_package()
-
-        print("✅ All models quantized and packaged successfully!")
-        print("📦 Package available at: models/package/")
-
+        print("\n📦 Merging LoRA adapters...")
+        merge_lora_adapters(adapter_path, merged_path)
+        
+        print("\n⚡ Applying 2-bit GPTQ quantization...")
+        extreme_quantize_model(merged_path, quantized_path, bits=2)
+        
+        print("\n✂️ Splitting into <50MB chunks...")
+        result = split_safetensors_into_chunks(quantized_path, chunks_path, 50)
+        if not result:
+            return
+        
+        num_chunks, total_size_mb = result
+        
+        print("\n📦 Creating deployment package...")
+        create_deployment_package(chunks_path, package_path)
+        
+        print("\n🔍 Validating results...")
+        success = validate_quantization_results(package_path)
+        
+        print("\n✅ Complete!")
+        print(f"📊 Size: {total_size_mb:.1f}MB in {num_chunks} chunks")
+        print(f"📦 Package: {package_path}")
+        
+        if success and total_size_mb < 400:
+            print("🎉 Target achieved!")
+        else:
+            print("⚠️ Validation failed")
+            
     except Exception as e:
-        print(f"❌ Error during quantization: {e}")
+        print(f"❌ Error: {e}")
         raise
 
 
