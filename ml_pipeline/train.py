@@ -1,8 +1,18 @@
 import os
+import torch
+
+# CPU optimizations for C7i
+os.environ['OMP_NUM_THREADS'] = '8'
+os.environ['MKL_NUM_THREADS'] = '8'
+torch.set_num_threads(8)
+
+# Disable CUDA-specific optimizations
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
 import argparse
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
-from transformers.optimization import Lion
-from trl import SFTTrainer
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from trl import SFTTrainer, SFTConfig
+from peft import LoraConfig
 from datasets import load_from_disk
 
 def train_with_trl():
@@ -30,39 +40,56 @@ def train_with_trl():
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
+    # LoRA configuration for memory efficiency
+    lora_config = LoraConfig(
+        r=16,                    # Good balance
+        lora_alpha=32,
+        target_modules=[
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj"
+        ],
+        lora_dropout=0.1,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        device_map="auto",  # Use accelerate for device mapping
-        torch_dtype="auto"
+        device_map="cpu",  # Force CPU instead of "auto"
+        torch_dtype=torch.float32,  # Use FP32 for CPU training
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
     )
 
-    # Create custom optimizer (Lion)
-    optimizer = Lion(
-        params=model.parameters(),
-        lr=args.learning_rate,
-        betas=(args.beta_1, args.beta_2),
-        weight_decay=args.weight_decay
-    )
-
-    # Training arguments
-    training_args = TrainingArguments(
+    # Training arguments optimized for CPU training
+    training_args = SFTConfig(
         output_dir=f"./checkpoints/{new_model_name}",
         num_train_epochs=args.epochs,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
-        gradient_accumulation_steps=1,  # Adjust if needed for memory
-        optim="adamw_torch",  # But we'll override with custom optimizer
-        save_steps=500,
-        save_total_limit=3,
+        per_device_train_batch_size=2,        # Reduce from 8 to 2 for CPU
+        gradient_accumulation_steps=4,        # Maintain effective batch size
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        optim="adamw_torch",                  # Use AdamW instead of Lion for CPU
+        fp16=False,                           # Disable for CPU
+        bf16=False,                           # Disable for CPU
         logging_steps=100,
-        evaluation_strategy="steps",
+        save_steps=500,
         eval_steps=500,
+        evaluation_strategy="steps",
+        save_total_limit=3,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        fp16=True,  # Mixed precision
-        dataloader_num_workers=4,
-        remove_unused_columns=False,
+        report_to=None,                       # Disable wandb/tensorboard
+        dataloader_num_workers=2,             # Reduce from 4 to 2 for CPU
+        dataloader_pin_memory=False,          # Disable for CPU
+        gradient_checkpointing=True,          # Enable for memory savings
+        max_grad_norm=1.0,
+        warmup_steps=100,
+        lr_scheduler_type="cosine",
+        max_seq_length=512,
+        dataset_text_field="text",
+        packing=False,                        # Keep False for simplicity
     )
 
     # SFT Trainer
@@ -75,12 +102,10 @@ def train_with_trl():
         dataset_text_field="text",  # Assuming dataset has 'text' field
         max_seq_length=512,
         packing=False,
+        peft_config=lora_config,  # Add LoRA configuration
     )
 
-    # Override optimizer
-    trainer.optimizer = optimizer
-
-    print("\n🚀 Starting fine-tuning with TRL SFTTrainer and Lion optimizer...")
+    print("\n🚀 Starting fine-tuning with TRL SFTTrainer and AdamW optimizer on CPU...")
 
     trainer.train()
 
@@ -96,3 +121,49 @@ def train_with_trl():
 
 if __name__ == "__main__":
     train_with_trl()
+
+# SageMaker configuration for AWS training
+def create_sagemaker_estimator(role_arn=None):
+    """
+    Create SageMaker PyTorch estimator for CPU training.
+    """
+    from sagemaker.pytorch import PyTorch
+
+    if role_arn is None:
+        # Default role - update with your actual role ARN
+        role_arn = "arn:aws:iam::123456789012:role/SageMakerRole"
+
+    estimator = PyTorch(
+        entry_point='train.py',
+        source_dir='.',
+        role=role_arn,
+        instance_type='ml.m7i.2xlarge',      # Perfect for CPU training!
+        instance_count=1,
+        framework_version='2.0.1',
+        py_version='py310',
+        volume_size=150,                     # Larger for your dataset
+        max_run=129600,                      # 36 hours max
+        use_spot_instances=True,             # Highly recommended for cost savings
+        max_wait=14400,                      # 4 hours wait for Spot
+        checkpoint_s3_uri='s3://your-bucket/checkpoints/',
+        hyperparameters={
+            'epochs': 3,
+            'learning_rate': 2e-4,
+            'batch_size': 4,                 # Can increase with 32GB RAM
+            'beta_1': 0.9,
+            'beta_2': 0.99,
+            'weight_decay': 0.01,
+        },
+        environment={
+            'OMP_NUM_THREADS': '8',
+            'MKL_NUM_THREADS': '8',
+        }
+    )
+
+    return estimator
+
+# Example usage for SageMaker training:
+# estimator = create_sagemaker_estimator(role_arn="your-role-arn")
+# estimator.fit({
+#     'training': 's3://your-bucket/training-data/'
+# })
