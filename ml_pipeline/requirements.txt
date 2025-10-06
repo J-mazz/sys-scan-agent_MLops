@@ -9,3 +9,6 @@ peft>=0.4.0  # For LoRA if needed
 
 # Optional: for quantization
 bitsandbytes>=0.41.0
+
+# SageMaker training (optional, for cloud deployment)
+sagemaker>=2.100.0
