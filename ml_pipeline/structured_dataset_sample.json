@@ -1,0 +1,82 @@
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert security analyst specializing in Linux system security. You analyze security scan findings, assess risks with detailed subscores, identify correlations between findings, and provide actionable remediation guidance. Your analyses are precise, data-driven, and aligned with industry best practices."
+      },
+      {
+        "role": "user",
+        "content": "Provide detailed remediation guidance for this security finding:\n\n**Finding:** World-writable file\n**Severity:** info (Risk Score: 10.0/100)\n**Actionable Probability:** 0.04\n\n**Description:** File is world writable\n\n**Task:** Provide step-by-step remediation actions, prioritized by impact."
+      },
+      {
+        "role": "assistant",
+        "content": "**Remediation Plan:**\n\n**Priority Level:** LOW - Monitor and assess\n\n**Action Steps:**\n1. **Assess impact**: Evaluate the security implications of this info severity finding\n2. **Research remediation**: Consult security documentation for recommended fixes\n3. **Implement fix**: Apply the appropriate remediation based on best practices\n4. **Verify resolution**: Confirm the security issue is properly addressed\n\n**Validation:**\nAfter implementing remediation, verify:\n1. The specific security control is properly configured\n2. No unintended side effects on system functionality\n3. Continuous monitoring confirms issue resolution\n\n**Timeline:** As part of routine maintenance"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert security analyst specializing in Linux system security. You analyze security scan findings, assess risks with detailed subscores, identify correlations between findings, and provide actionable remediation guidance. Your analyses are precise, data-driven, and aligned with industry best practices."
+      },
+      {
+        "role": "user",
+        "content": "Analyze this security finding and provide detailed risk assessment:\n\n**Finding Details:**\n- Title: World-writable file\n- Severity: info\n- Category: unknown\n- Description: File is world writable\n- Baseline Status: existing\n- Tags: filesystem, permissions, normal\n\n**Task:** Provide risk subscores on a 0.0-1.0 scale:\n1. **Impact**: Potential damage if exploited\n2. **Exposure**: Attack surface and accessibility\n3. **Anomaly**: Deviation from expected baseline\n4. **Confidence**: Reliability of the assessment\n\nAlso estimate the probability this finding requires immediate action (0.0-1.0)."
+      },
+      {
+        "role": "assistant",
+        "content": "**Risk Assessment:**\n\n**Risk Subscores:**\n- Impact: 0.02\n- Exposure: 0.05\n- Anomaly: 0.13\n- Confidence: 0.86\n\n**Probability Actionable:** 0.03\n\n**Overall Risk Score:** 10.0/100\n\n**Reasoning:**\nThis info severity finding in the unknown category shows low impact potential \nand is low exposure to exploitation. Assessment confidence is high based on available data and context."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert security analyst specializing in Linux system security. You analyze security scan findings, assess risks with detailed subscores, identify correlations between findings, and provide actionable remediation guidance. Your analyses are precise, data-driven, and aligned with industry best practices."
+      },
+      {
+        "role": "user",
+        "content": "Analyze this security finding and provide detailed risk assessment:\n\n**Finding Details:**\n- Title: World-writable file\n- Severity: info\n- Category: unknown\n- Description: File is world writable\n- Baseline Status: existing\n- Tags: filesystem, permissions, normal\n\n**Task:** Provide risk subscores on a 0.0-1.0 scale:\n1. **Impact**: Potential damage if exploited\n2. **Exposure**: Attack surface and accessibility\n3. **Anomaly**: Deviation from expected baseline\n4. **Confidence**: Reliability of the assessment\n\nAlso estimate the probability this finding requires immediate action (0.0-1.0)."
+      },
+      {
+        "role": "assistant",
+        "content": "**Risk Assessment:**\n\n**Risk Subscores:**\n- Impact: 0.04\n- Exposure: 0.08\n- Anomaly: 0.12\n- Confidence: 0.80\n\n**Probability Actionable:** 0.03\n\n**Overall Risk Score:** 10.0/100\n\n**Reasoning:**\nThis info severity finding in the unknown category shows low impact potential \nand is low exposure to exploitation. Assessment confidence is high based on available data and context."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert security analyst specializing in Linux system security. You analyze security scan findings, assess risks with detailed subscores, identify correlations between findings, and provide actionable remediation guidance. Your analyses are precise, data-driven, and aligned with industry best practices."
+      },
+      {
+        "role": "user",
+        "content": "Analyze this security finding and provide detailed risk assessment:\n\n**Finding Details:**\n- Title: World-writable file\n- Severity: info\n- Category: unknown\n- Description: File is world writable\n- Baseline Status: existing\n- Tags: filesystem, permissions, normal\n\n**Task:** Provide risk subscores on a 0.0-1.0 scale:\n1. **Impact**: Potential damage if exploited\n2. **Exposure**: Attack surface and accessibility\n3. **Anomaly**: Deviation from expected baseline\n4. **Confidence**: Reliability of the assessment\n\nAlso estimate the probability this finding requires immediate action (0.0-1.0)."
+      },
+      {
+        "role": "assistant",
+        "content": "**Risk Assessment:**\n\n**Risk Subscores:**\n- Impact: 0.02\n- Exposure: 0.06\n- Anomaly: 0.15\n- Confidence: 0.84\n\n**Probability Actionable:** 0.04\n\n**Overall Risk Score:** 10.0/100\n\n**Reasoning:**\nThis info severity finding in the unknown category shows low impact potential \nand is low exposure to exploitation. Assessment confidence is high based on available data and context."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert security analyst specializing in Linux system security. You analyze security scan findings, assess risks with detailed subscores, identify correlations between findings, and provide actionable remediation guidance. Your analyses are precise, data-driven, and aligned with industry best practices."
+      },
+      {
+        "role": "user",
+        "content": "Provide detailed remediation guidance for this security finding:\n\n**Finding:** World-writable file\n**Severity:** info (Risk Score: 10.0/100)\n**Actionable Probability:** 0.03\n\n**Description:** File is world writable\n\n**Task:** Provide step-by-step remediation actions, prioritized by impact."
+      },
+      {
+        "role": "assistant",
+        "content": "**Remediation Plan:**\n\n**Priority Level:** LOW - Monitor and assess\n\n**Action Steps:**\n1. **Assess impact**: Evaluate the security implications of this info severity finding\n2. **Research remediation**: Consult security documentation for recommended fixes\n3. **Implement fix**: Apply the appropriate remediation based on best practices\n4. **Verify resolution**: Confirm the security issue is properly addressed\n\n**Validation:**\nAfter implementing remediation, verify:\n1. The specific security control is properly configured\n2. No unintended side effects on system functionality\n3. Continuous monitoring confirms issue resolution\n\n**Timeline:** As part of routine maintenance"
+      }
+    ]
+  }
+]

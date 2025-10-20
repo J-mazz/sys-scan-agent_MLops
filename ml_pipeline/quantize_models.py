@@ -35,8 +35,8 @@ def merge_lora_adapters(adapter_path: str, output_path: str):
     return merged_model, tokenizer
 
 
-def extreme_quantize_model(model_path: str, output_path: str, bits: int = 2):
-    """Apply 2-bit GPTQ quantization."""
+def extreme_quantize_model(model_path: str, output_path: str, bits: int = 4):
+    """Apply 4-bit GPTQ quantization."""
     print(f"Applying {bits}-bit GPTQ quantization...")
     
     quantize_config = BaseQuantizeConfig(
@@ -131,7 +131,7 @@ def create_deployment_package(model_dir: str, output_package: str):
     metadata = {
         "model_name": "sys-scan-mistral-agent-extreme-quantized",
         "base_model": "mistralai/Mistral-7B-Instruct-v0.1",
-        "quantization": "GPTQ-2bit",
+        "quantization": "GPTQ-4bit",
         "total_chunks": len(chunk_files),
         "max_chunk_size_mb": 50,
         "total_size_mb": sum(os.path.getsize(f) for f in chunk_files) / (1024 * 1024),
@@ -223,8 +223,8 @@ def validate_quantization_results(package_path: str):
     total_size_mb = sum(os.path.getsize(f) for f in chunk_files) / (1024 * 1024)
     print(f"📊 Total: {total_size_mb:.1f}MB")
     
-    if total_size_mb >= 400:
-        print("❌ Total size >=400MB!")
+    if total_size_mb >= 800:  # 4-bit is larger than 2-bit
+        print("❌ Total size >=800MB!")
         return False
     
     print("✅ Validation passed!")
@@ -245,8 +245,8 @@ def main():
         print("\n📦 Merging LoRA adapters...")
         merge_lora_adapters(adapter_path, merged_path)
         
-        print("\n⚡ Applying 2-bit GPTQ quantization...")
-        extreme_quantize_model(merged_path, quantized_path, bits=2)
+        print("\n⚡ Applying 4-bit GPTQ quantization...")
+        extreme_quantize_model(merged_path, quantized_path, bits=4)
         
         print("\n✂️ Splitting into <50MB chunks...")
         result = split_safetensors_into_chunks(quantized_path, chunks_path, 50)
@@ -265,7 +265,7 @@ def main():
         print(f"📊 Size: {total_size_mb:.1f}MB in {num_chunks} chunks")
         print(f"📦 Package: {package_path}")
         
-        if success and total_size_mb < 400:
+        if success and total_size_mb < 800:
             print("🎉 Target achieved!")
         else:
             print("⚠️ Validation failed")

@@ -7,16 +7,18 @@ accelerate>=0.20.0
 numpy>=1.21.0
 peft>=0.4.0  # For LoRA fine-tuning
 
+# Hugging Face authentication
+huggingface-hub>=0.17.0
+
 # GPU optimizations
 bitsandbytes>=0.41.0  # For quantization if needed
 
-# Lion optimizer (separate package for compatibility)
+# Lion optimizer
 lion-pytorch>=0.1.2
 
 # Extreme quantization for embedded deployment
-auto-gptq>=0.5.0  # For GPTQ quantization
-safetensors>=0.4.0  # For safetensors format
-optimum>=1.12.0  # For quantization optimizations
+# auto-gptq>=0.5.0  # Temporarily disabled due to build issues - use optimum instead
+optimum[auto-gptq]>=1.12.0  # For GPTQ quantization via optimum
 
 # SageMaker training (optional, for cloud deployment)
 sagemaker>=2.100.0
