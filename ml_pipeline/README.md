@@ -4,7 +4,7 @@ This ML pipeline implements advanced model optimization techniques to embed fine
 
 ## Overview
 
-The pipeline transforms raw security scan data from Sys-Scan-Graph's C++ scanner into actionable intelligence through optimized language models running locally within a LangGraph orchestration framework. By fine-tuning and quantizing Llama-3 models, we achieve production-ready performance with minimal resource requirements while maintaining analytical depth.
+The pipeline transforms raw security scan data from Sys-Scan-Graph's C++ scanner into actionable intelligence through optimized language models running locally within a LangGraph orchestration framework. By fine-tuning and quantizing Mistral-7b models, we achieve production-ready performance with minimal resource requirements while maintaining analytical depth.
 
 **Critical Security Advantage**: This implementation aims to completely eliminates all external LLM dependencies and APIs, ensuring complete data security and sovereignty. All processing occurs locally with zero data transmission to external services, making it suitable for air-gapped, classified, and highly sensitive environments.
 
@@ -117,7 +117,7 @@ where B ∈ ℝ^(d×r), A ∈ ℝ^(r×k), and r << min(d,k)
 - **Forward/Backward Pass**: FP16 for computation speed
 - **Gradient Storage**: FP32 for accumulation accuracy
 - **Loss Scaling**: Dynamic scaling prevents underflow
-- **TF32 Tensor Cores**: A100 GPU acceleration for matrix operations
+- **TF32 Tensor Cores**: Acceleration for matrix operations
 
 **Benefits:**
 - **Training Speed**: 2-3x faster vs FP32
@@ -204,15 +204,15 @@ Analyze the following security finding and provide an assessment:
 
 ## Technical Architecture
 
-### Distributed Training Infrastructure
+### Training Infrastructure
 
 #### Keras 3 Multi-Backend Strategy
 
 ```python
 # Multi-GPU distributed training setup
-strategy = tf.distribute.MirroredStrategy()
+strategy = tf.MirroredStrategy()
 with strategy.scope():
-    model = TFAutoModelForCausalLM.from_pretrained("meta-llama/Llama-3-8B")
+    model = TFAutoModelForCausalLM.from_pretrained("Mistral-7b-Instruct")
     optimizer = keras.optimizers.Lion(learning_rate=2e-4, weight_decay=0.01)
 ```
 
@@ -271,7 +271,7 @@ The optimized model operates within a LangGraph orchestration framework to proce
 ### Training Metrics
 
 - **Throughput**: 2,500+ tokens/second with Lion optimizer
-- **GPU Utilization**: 95%+ across distributed GPUs
+- **GPU Utilization**: 95%+ 
 - **Memory Efficiency**: 85% utilization with mixed precision training
 - **Convergence**: Stable loss reduction with early stopping criteria
 
