@@ -10,6 +10,17 @@ The synthetic data generation system consists of:
 - **Verifier Agents**: Validate data quality and prevent over-generation
 - **Generator Orchestrator**: Coordinates producers and verifiers
 - **Ground Truth Schema**: Defines the structure of generated data
+- **TPU Fine-Tuning**: Colab notebook for training Mistral-7B with LoRA on TPUs
+
+## Training Pipeline
+
+The `colab_fullstack_tpu.ipynb` notebook implements the complete TPU-accelerated fine-tuning pipeline:
+
+- **Model**: Mistral-7B-Instruct with LoRA adapters
+- **Hardware**: Google Colab TPU with FSDP v2 sharding
+- **Libraries**: Nightly Hugging Face (Transformers, TRL, PEFT, Optimum-TPU)
+- **Data Format**: Instruction-response pairs from synthetic security findings
+- **Output**: Trained LoRA adapter for embedded inference
 
 ## Architecture
 
