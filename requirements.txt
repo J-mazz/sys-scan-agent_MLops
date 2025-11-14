@@ -1,0 +1,4 @@
+# Experimental dependencies for sys-scan-embedded-agent synthetic data pipeline.
+# NOTE: pip cannot install or switch interpreters. Install the CPython 3.14 "nogil" build manually.
+# The requirement below documents the target interpreter version for auditing purposes.
+python-nogil==3.14.0a0
