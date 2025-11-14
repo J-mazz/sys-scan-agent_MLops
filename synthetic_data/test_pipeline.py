@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from synthetic_data_pipeline import SyntheticDataPipeline
+from langchain_correlation_producer import get_langchain_bridge_runtime
 
 def test_complete_pipeline():
     """Test the complete synthetic data pipeline."""
@@ -110,6 +111,10 @@ def test_pipeline_components():
     # Test verification
     verification = pipeline.verification_agent.verify_dataset(findings, correlations)
     print(f"✓ Verification: {verification.get('overall_status', 'unknown')}")
+
+    if sys.version_info >= (3, 14):
+        bridge_status = get_langchain_bridge_runtime() or "not configured"
+        print(f"✓ LangChain bridge runtime: {bridge_status}")
 
     print("✓ All components working correctly")
 

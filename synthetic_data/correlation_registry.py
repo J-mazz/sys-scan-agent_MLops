@@ -3,27 +3,32 @@ Registry for managing correlation producers.
 """
 
 from typing import Dict, List, Any, Optional
+import logging
 from base_correlation_producer import BaseCorrelationProducer
 from process_network_correlation_producer import ProcessNetworkCorrelationProducer
 from filesystem_correlation_producer import FileSystemCorrelationProducer
 from kernel_correlation_producer import KernelCorrelationProducer
-try:
+try:  # pragma: no cover - optional LangChain integration
     from langchain_correlation_producer import (
         LangChainCorrelationProducer,
         LANGCHAIN_CORRELATION_AVAILABLE,
     )
-except ImportError:
+except ImportError:  # pragma: no cover - optional LangChain integration
     LANGCHAIN_CORRELATION_AVAILABLE = False
     LangChainCorrelationProducer = None  # type: ignore[assignment]
 
 # Import parallel processing utilities
-try:
+try:  # pragma: no cover - optional parallel acceleration
     from parallel_processor import process_correlations_parallel, get_parallel_processor
     PARALLEL_AVAILABLE = True
-    print(f"✅ Correlation parallel processing module imported successfully")
-except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.info("Correlation parallel processing module imported successfully")
+except ImportError as e:  # pragma: no cover - optional parallel acceleration
     PARALLEL_AVAILABLE = False
-    print(f"❌ Correlation parallel processing import failed: {e}")
+    logging.getLogger(__name__).warning("Correlation parallel processing import failed: %s", e)
+
+
+logger = logging.getLogger(__name__)
 
 class CorrelationRegistry:
     """Registry for all correlation producers."""
@@ -87,23 +92,30 @@ class CorrelationRegistry:
         # Use parallel processing if available and beneficial
         if PARALLEL_AVAILABLE and len(self.correlation_producers) > 1:
             processor = get_parallel_processor(conservative_parallel, gpu_optimized, max_workers)
-            print(f"🔄 Using parallel processing for {len(self.correlation_producers)} correlation producers ({processor.max_workers} workers)")
+            logger.info(
+                "Using parallel processing for %d correlation producers (%d workers)",
+                len(self.correlation_producers),
+                processor.max_workers,
+            )
             return process_correlations_parallel(findings, self.correlation_producers, "Analyzing correlations", processor)
         else:
             # Fallback to sequential processing
             if not PARALLEL_AVAILABLE:
-                print("📝 Parallel processing not available, using sequential processing")
+                logger.info("Parallel processing not available, using sequential processing")
             else:
-                print(f"📝 Small number of correlation producers ({len(self.correlation_producers)}), using sequential processing")
+                logger.info(
+                    "Small number of correlation producers (%d), using sequential processing",
+                    len(self.correlation_producers),
+                )
 
             all_correlations = []
             for name, producer in self.correlation_producers.items():
                 try:
                     correlations = producer.analyze_correlations(findings)
                     all_correlations.extend(correlations)
-                    print(f"  {name}: Generated {len(correlations)} correlations")
+                    logger.debug("%s: Generated %d correlations", name, len(correlations))
                 except Exception as e:
-                    print(f"  ERROR in {name}: {e}")
+                    logger.error("Error in correlation producer %s: %s", name, e)
 
             return all_correlations
 

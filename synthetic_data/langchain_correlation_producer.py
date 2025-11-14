@@ -3,18 +3,69 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from base_correlation_producer import BaseCorrelationProducer
+from langchain_bridge import render_prompt
 
-try:
-    from langchain_core.prompts import PromptTemplate
-    from langchain_openai import ChatOpenAI
-    LANGCHAIN_CORRELATION_AVAILABLE = True
-except ImportError:  # pragma: no cover - optional dependency
-    PromptTemplate = None  # type: ignore
-    ChatOpenAI = None  # type: ignore
-    LANGCHAIN_CORRELATION_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_external_python() -> Optional[str]:
+    """Locate a Python 3.12 interpreter for the LangChain bridge."""
+
+    candidates: List[Optional[Path]] = []
+
+    override = os.getenv("SYNTHETIC_DATA_LANGCHAIN_PYTHON")
+    if override:
+        candidates.append(Path(override))
+
+    module_dir = Path(__file__).resolve().parent
+    repo_root = module_dir.parent
+    candidates.append(repo_root / ".venv-3.12/bin/python")
+
+    python_path = shutil.which("python3.12")
+    if python_path:
+        candidates.append(Path(python_path))
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            resolved = candidate.expanduser().resolve(strict=True)
+        except FileNotFoundError:
+            continue
+        if os.access(resolved, os.X_OK):
+            return str(resolved)
+
+    return None
+
+
+ChatOpenAI = None  # type: ignore[assignment]
+_NATIVE_LANGCHAIN_AVAILABLE = False
+
+if sys.version_info < (3, 14):  # Native imports only when interpreter is supported
+    try:  # pragma: no cover - import path verified during integration
+        from langchain_openai import ChatOpenAI  # type: ignore
+        _NATIVE_LANGCHAIN_AVAILABLE = True
+    except Exception as import_error:  # pragma: no cover - optional dependency missing
+        logger.debug("Native LangChain imports unavailable: %s", import_error)
+
+
+def get_langchain_bridge_runtime() -> Optional[str]:
+    """Return the Python executable that will execute LangChain prompts."""
+
+    return _resolve_external_python()
+
+
+LANGCHAIN_CORRELATION_AVAILABLE = True  # Availability validated at instantiation time
 
 
 class LangChainCorrelationProducer(BaseCorrelationProducer):
@@ -24,29 +75,43 @@ class LangChainCorrelationProducer(BaseCorrelationProducer):
         super().__init__("langchain_correlation")
         self.model_name = model
         self.temperature = temperature
-        self.llm = self._initialise_llm() if LANGCHAIN_CORRELATION_AVAILABLE else None
-        self.prompt = self._build_prompt() if LANGCHAIN_CORRELATION_AVAILABLE else None
+        self.logger = logging.getLogger("synthetic_data.correlation.langchain")
+        self.external_python = get_langchain_bridge_runtime()
+        bridge_available = self.external_python is not None
+        try:
+            self.bridge_timeout = int(os.getenv("SYNTHETIC_DATA_LANGCHAIN_TIMEOUT", "30"))
+        except ValueError:
+            self.bridge_timeout = 30
+            self.logger.warning(
+                "Invalid SYNTHETIC_DATA_LANGCHAIN_TIMEOUT; defaulting to %s seconds",
+                self.bridge_timeout,
+            )
 
-    def _initialise_llm(self):  # pragma: no cover - requires external service
+        if _NATIVE_LANGCHAIN_AVAILABLE:
+            self.mode = "native"
+            self.llm = self._initialise_native_llm()
+        elif bridge_available:
+            self.mode = "bridge"
+            self.llm = None
+            self.logger.info(
+                "LangChain correlations proxied via interpreter: %s",
+                self.external_python,
+            )
+        else:
+            self.mode = "disabled"
+            self.llm = None
+            self.logger.warning(
+                "LangChain runtime unavailable; falling back to deterministic correlations."
+            )
+
+    def _initialise_native_llm(self):  # pragma: no cover - requires external service
         if ChatOpenAI is None:
             return None
         try:
             return ChatOpenAI(model=self.model_name, temperature=self.temperature, max_tokens=600)
-        except Exception:
+        except Exception as exc:
+            self.logger.warning("Failed to initialise native LangChain LLM: %s", exc)
             return None
-
-    def _build_prompt(self):  # pragma: no cover - requires langchain
-        if PromptTemplate is None:
-            return None
-        template = (
-            "You are a SOC analyst creating a high-value correlation. "
-            "Use the provided findings to write ONE correlation in strict JSON with fields: "
-            "title (string), description (string), severity (info|low|medium|high|critical), "
-            "risk_score (integer 0-100), correlation_type (string), insight (string summarising the link). "
-            "Ensure you reference at least two finding IDs in a field named related_ids (array of strings)."
-            "\n\nContext:\n{context}\n\nJSON:"
-        )
-        return PromptTemplate.from_template(template)
 
     def analyze_correlations(self, findings: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         if not findings:
@@ -91,32 +156,64 @@ class LangChainCorrelationProducer(BaseCorrelationProducer):
         return enriched[:6]
 
     def _attempt_langchain_correlation(self, candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        if not self.llm or not self.prompt:  # LangChain not ready
+        if self.mode == "native" and self.llm:  # pragma: no cover - external service
+            prompt_text = render_prompt(candidates)
+            try:
+                completion = self.llm.invoke(prompt_text)
+                raw_text = completion.content if hasattr(completion, "content") else str(completion)
+                payload = json.loads(raw_text)
+            except Exception as exc:
+                self.logger.warning("Native LangChain call failed: %s", exc)
+                return None
+
+            required_fields = {"title", "description", "severity", "risk_score", "related_ids"}
+            if not required_fields.issubset(payload) or len(payload.get("related_ids", [])) < 2:
+                self.logger.debug("Native LangChain payload missing required fields")
+                return None
+            return payload
+
+        if self.mode == "bridge" and self.external_python:
+            return self._invoke_external_langchain(candidates)
+
+        return None
+
+    def _invoke_external_langchain(self, candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        payload = {
+            "candidates": candidates,
+            "model": self.model_name,
+            "temperature": self.temperature,
+        }
+
+        command = [self.external_python, "-m", "synthetic_data.langchain_bridge"]
+
+        try:
+            completed = subprocess.run(
+                command,
+                input=json.dumps(payload),
+                text=True,
+                capture_output=True,
+                timeout=self.bridge_timeout,
+                env=os.environ.copy(),
+                check=False,
+            )
+        except Exception as exc:  # pragma: no cover - subprocess errors are rare
+            self.logger.warning("Failed to invoke LangChain bridge: %s", exc)
             return None
 
-        context_lines = [
-            f"- {cand['id']} ({cand['severity']}, {cand['risk_score']}): {cand['title']}"
-            for cand in candidates
-        ]
-        context = "\n".join(context_lines)
-
-        try:  # pragma: no cover - depends on external LLM
-            completion = self.llm.invoke(self.prompt.format(context=context))
-            if hasattr(completion, "content"):
-                raw_text = completion.content  # chat model result
-            else:
-                raw_text = str(completion)
-            payload = json.loads(raw_text)
-        except Exception:
+        if completed.returncode != 0:
+            stderr = completed.stderr.strip()
+            self.logger.warning(
+                "LangChain bridge exited with code %s: %s",
+                completed.returncode,
+                stderr,
+            )
             return None
 
-        # Basic validation
-        required_fields = {"title", "description", "severity", "risk_score", "related_ids"}
-        if not required_fields.issubset(payload):
+        try:
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            self.logger.warning("LangChain bridge returned invalid JSON payload")
             return None
-        if len(payload.get("related_ids", [])) < 2:
-            return None
-        return payload
 
     def _fallback_correlation(self, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
         top = candidates[:3]

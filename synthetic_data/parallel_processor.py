@@ -57,11 +57,11 @@ except ImportError:
 try:
     import cupy as cp  # type: ignore
     CUPY_AVAILABLE = True
-    print("✅ CuPy available for GPU acceleration")
+    logger.info("CuPy available for GPU acceleration")
 except ImportError:
     cp = None
     CUPY_AVAILABLE = False
-    print("⚠️  CuPy not available - GPU acceleration limited")
+    logger.info("CuPy not available - GPU acceleration limited")
 
 
 @dataclass(frozen=True)
@@ -84,13 +84,16 @@ class ParallelProcessor:
         self.use_processes = self._should_use_processes()
         self.chunk_size = 64 if self.use_processes else 16
 
-        print(
-            f"🔧 Parallel processor initialized: {self.max_workers} workers "
-            f"(conservative: {conservative_mode}, GPU: {gpu_optimized})"
+        logger.info(
+            "Parallel processor initialized: %d workers (conservative: %s, GPU: %s)",
+            self.max_workers,
+            conservative_mode,
+            gpu_optimized,
         )
-        print(
-            f"   System: {self.profile.cpu_count} CPU cores, "
-            f"{self.profile.available_memory_gb:.1f}GB RAM available"
+        logger.info(
+            "System profile: %d CPU cores, %.1fGB RAM available",
+            self.profile.cpu_count,
+            self.profile.available_memory_gb,
         )
 
     def _detect_system_profile(self) -> SystemProfile:
@@ -146,14 +149,14 @@ class ParallelProcessor:
 
             cpu_threshold = 95 if available_memory_gb >= 32 else 90 if available_memory_gb >= 16 else 85
             if cpu_percent > cpu_threshold:
-                print(f"⚠️  High CPU usage detected ({cpu_percent:.1f}%), throttling workers")
+                logger.warning("High CPU usage detected (%.1f%%), throttling workers", cpu_percent)
                 self.max_workers = max(1, self.max_workers // 2)
                 return False
 
             memory = psutil.virtual_memory()
             memory_threshold = 80 if available_memory_gb < 12 else 90
             if memory.percent > memory_threshold:
-                print(f"⚠️  High memory usage detected ({memory.percent:.1f}%), throttling workers")
+                logger.warning("High memory usage detected (%.1f%%), throttling workers", memory.percent)
                 self.max_workers = max(1, self.max_workers // 2)
                 return False
 
@@ -191,18 +194,18 @@ class ParallelProcessor:
         # Check system resources before starting
         self._check_system_resources()
 
-        print(f"🔄 {description} ({len(items)} items) using {self.max_workers} workers...")
+        logger.info("%s (%d items) using %d workers", description, len(items), self.max_workers)
 
         # For small datasets, don't bother with parallel processing
         if len(items) <= 2:
-            print("📝 Small dataset detected, processing sequentially")
+            logger.info("Small dataset detected, processing sequentially")
             results: List[R] = []
             for item in items:
                 try:
                     result = process_func(item)
                     results.append(result)
                 except Exception as exc:
-                    print(f"❌ Error processing item: {exc}")
+                    logger.error("Error processing item: %s", exc)
             return results
 
         # GPU optimization: Use ProcessPoolExecutor for CPU-bound tasks
@@ -213,9 +216,9 @@ class ParallelProcessor:
                 try:
                     results.append(future.result())
                 except Exception as exc:
-                    print(f"❌ Error processing item: {exc}")
+                    logger.error("Error processing item: %s", exc)
 
-        print(f"✅ {description} completed: {len(results)}/{len(items)} items processed")
+        logger.info("%s completed: %d/%d items processed", description, len(results), len(items))
         return results
 
     def process_dict_parallel(
@@ -241,18 +244,18 @@ class ParallelProcessor:
         # Check system resources before starting
         self._check_system_resources()
 
-        print(f"🔄 {description} ({len(items_dict)} items) using {self.max_workers} workers...")
+        logger.info("%s (%d items) using %d workers", description, len(items_dict), self.max_workers)
 
         # For small datasets, don't bother with parallel processing
         if len(items_dict) <= 2:
-            print("📝 Small dataset detected, processing sequentially")
+            logger.info("Small dataset detected, processing sequentially")
             results: Dict[str, R] = {}
             for key, value in items_dict.items():
                 try:
                     result_key, result_value = process_func(key, value)
                     results[result_key] = result_value
                 except Exception as exc:
-                    print(f"❌ Error processing {key}: {exc}")
+                    logger.error("Error processing %s: %s", key, exc)
             return results
 
         # GPU optimization: Process in larger chunks for better throughput
@@ -264,9 +267,9 @@ class ParallelProcessor:
                     result_key, result_value = future.result()
                     results[result_key] = result_value
                 except Exception as exc:
-                    print(f"❌ Error processing item: {exc}")
+                    logger.error("Error processing item: %s", exc)
 
-        print(f"✅ {description} completed: {len(results)}/{len(items_dict)} items processed")
+        logger.info("%s completed: %d/%d items processed", description, len(results), len(items_dict))
         return results
 
 # Environment-specific processor instances

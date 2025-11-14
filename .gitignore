@@ -50,10 +50,14 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
-
+*.lcov
+.coveragerc
+coverage*.json
+ 
 # Translations
 *.mo
 *.pot
+large_dataset.json
 
 # Django stuff:
 *.log
@@ -127,7 +131,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# local discrepencies
 *.instructions.*
+
 #Key_files
 *.pem
 

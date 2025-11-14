@@ -3,6 +3,7 @@ Registry for managing synthetic data producers.
 """
 
 from typing import Dict, List, Any, Optional
+import logging
 from base_producer import BaseProducer
 from process_producer import ProcessProducer
 from network_producer import NetworkProducer
@@ -15,14 +16,16 @@ from mac_producer import MacProducer
 from dns_producer import DnsProducer
 from endpoint_behavior_producer import EndpointBehaviorProducer
 
+logger = logging.getLogger(__name__)
+
 # Import parallel processing utilities
 try:
     from parallel_processor import process_producers_parallel, get_parallel_processor
     PARALLEL_AVAILABLE = True
-    print(f"✅ Parallel processing module imported successfully")
+    logger.info("Parallel processing module imported successfully")
 except ImportError as e:
     PARALLEL_AVAILABLE = False
-    print(f"❌ Parallel processing import failed: {e}")
+    logger.warning("Parallel processing import failed: %s", e)
 
 class ProducerRegistry:
     """Registry for all synthetic data producers."""
@@ -77,19 +80,27 @@ class ProducerRegistry:
         # Use parallel processing if available and beneficial
         if PARALLEL_AVAILABLE and len(self.producers) > 2:
             processor = get_parallel_processor(conservative_parallel, gpu_optimized, max_workers)
-            print(f"🔄 Using parallel processing for {len(self.producers)} producers ({processor.max_workers} workers)")
+            logger.info(
+                "Using parallel processing for %d producers (%d workers)",
+                len(self.producers),
+                processor.max_workers,
+            )
             return process_producers_parallel(self.producers, counts, "Generating findings", processor)
         else:
             # Fallback to sequential processing for small numbers or when parallel not available
             if not PARALLEL_AVAILABLE:
-                print("📝 Parallel processing not available, using sequential processing")
+                logger.info("Parallel processing not available, using sequential processing")
             else:
-                print(f"📝 Small number of producers ({len(self.producers)}), using sequential processing")
+                logger.info("Small number of producers (%d), using sequential processing", len(self.producers))
 
             results = {}
             for name, producer in self.producers.items():
                 count = counts.get(name, 10)
-                results[name] = producer.generate_findings(count)
+                try:
+                    results[name] = producer.generate_findings(count)
+                except Exception as exc:
+                    logger.error("Error generating findings for producer %s: %s", name, exc)
+                    results[name] = []
             return results
 
 # Global registry instance

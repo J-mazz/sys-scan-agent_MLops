@@ -360,7 +360,7 @@ result = run_synthetic_data_pipeline(
 - `kernel_correlation_producer.py`: Kernel parameter correlation analysis
 - `langchain_correlation_producer.py`: LangChain-assisted high-value correlation synthesis
 
-> **Note:** The LangChain correlation producer activates automatically when `use_langchain=True` and the LangChain packages/API credentials are available. Without LangChain, the pipeline falls back to deterministic correlation logic while keeping the broader workflow intact.
+> **Note:** The LangChain correlation producer activates automatically when `use_langchain=True` and the LangChain packages/API credentials are available. Without LangChain, the pipeline falls back to deterministic correlation logic while keeping the broader workflow intact. When the main pipeline runs on the Python 3.14 free-threaded build, LangChain prompts are automatically proxied to a Python 3.12 runtime (default: `.venv-3.12/bin/python`) so you retain no-gil throughput while still calling the LangChain stack.
 
 ### Testing & Validation
 

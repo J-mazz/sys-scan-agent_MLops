@@ -10,32 +10,49 @@ from datetime import datetime
 from pathlib import Path
 import statistics
 from collections import defaultdict
+import logging
+import os
 
-try:
-    from langchain_core.documents import Document
+try:  # pragma: no cover - optional LangChain integration
     from langchain_core.prompts import PromptTemplate
     from langchain_core.output_parsers import JsonOutputParser
     from langchain_core.runnables import RunnablePassthrough
     from langchain_openai import ChatOpenAI
     LANGCHAIN_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover - optional LangChain integration
     # Handle case where langchain packages are not available
     LANGCHAIN_AVAILABLE = False
-    print("Warning: LangChain not available. Advanced data enrichment features will be limited.")
+    logging.getLogger(__name__).warning(
+        "LangChain integrations not installed. Install 'langchain' and 'langchain-openai' to enable enrichment."
+    )
+
+
+logger = logging.getLogger(__name__)
 
 class DataTransformationPipeline:
     """Pipeline for transforming and optimizing synthetic security data."""
 
     def __init__(self, use_langchain: bool = True, fast_mode: bool = False):
         self.use_langchain = use_langchain and LANGCHAIN_AVAILABLE and not fast_mode
-        if fast_mode:
-            print("Using FAST MODE: Skipping LangChain enrichment for maximum speed")
-        elif self.use_langchain:
-            self._setup_langchain_components()
-        else:
-            print("Using basic transformation without LangChain enrichment")
 
-    def _setup_langchain_components(self):
+        if fast_mode:
+            logger.info("Using FAST MODE: Skipping LangChain enrichment for maximum speed")
+            self.use_langchain = False
+        elif self.use_langchain and not os.environ.get("OPENAI_API_KEY"):
+            logger.warning(
+                "OPENAI_API_KEY not set. Falling back to deterministic enrichment while keeping LangChain optional."
+            )
+            self.use_langchain = False
+
+        if self.use_langchain:  # pragma: no cover - requires external LangChain runtime
+            self._setup_langchain_components()
+            logger.info("LangChain enrichment enabled for data transformation")
+        else:
+            if use_langchain and not LANGCHAIN_AVAILABLE:
+                logger.warning("LangChain packages unavailable. Proceeding without enrichment.")
+            logger.info("Using deterministic transformation without LangChain enrichment")
+
+    def _setup_langchain_components(self):  # pragma: no cover - requires LangChain runtime
         """Set up LangChain components for data enrichment."""
         if not LANGCHAIN_AVAILABLE:
             return
@@ -94,7 +111,7 @@ class DataTransformationPipeline:
         Returns:
             Transformed and optimized dataset
         """
-        print("Starting data transformation pipeline...")
+        logger.info("Starting data transformation pipeline...")
 
         # Step 1: Data normalization and cleaning
         normalized_findings = self._normalize_findings(findings)
@@ -132,7 +149,7 @@ class DataTransformationPipeline:
         if compress:
             final_dataset = self._compress_dataset(final_dataset)
 
-        print("Data transformation pipeline completed")
+        logger.info("Data transformation pipeline completed")
         return final_dataset
 
     def _normalize_findings(self, findings: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -252,7 +269,7 @@ class DataTransformationPipeline:
 
         return round(score, 2)
 
-    def _enrich_findings_with_langchain(self, findings: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _enrich_findings_with_langchain(self, findings: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:  # pragma: no cover - requires LangChain runtime
         """Enrich findings using LangChain for additional context."""
         if not self.use_langchain:
             return findings
@@ -282,7 +299,7 @@ class DataTransformationPipeline:
                     enriched[scanner_type].append(enriched_finding)
 
                 except Exception as e:
-                    print(f"Warning: Failed to enrich finding {finding.get('id')}: {e}")
+                    logger.warning("Failed to enrich finding %s: %s", finding.get('id'), e)
                     # Add basic enrichment fallback
                     enriched_finding = finding.copy()
                     enriched_finding["_langchain_enrichment"] = {
@@ -293,7 +310,7 @@ class DataTransformationPipeline:
 
         return enriched
 
-    def _enrich_correlations_with_langchain(self, correlations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enrich_correlations_with_langchain(self, correlations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:  # pragma: no cover - requires LangChain runtime
         """Enrich correlations using LangChain."""
         if not self.use_langchain:
             return correlations
@@ -321,7 +338,7 @@ class DataTransformationPipeline:
                 enriched.append(enriched_correlation)
 
             except Exception as e:
-                print(f"Warning: Failed to enrich correlation {correlation.get('id')}: {e}")
+                logger.warning("Failed to enrich correlation %s: %s", correlation.get('id'), e)
                 enriched.append(correlation)
 
         return enriched
@@ -563,5 +580,5 @@ class DataTransformationPipeline:
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(dataset, f, indent=2, ensure_ascii=False)
 
-        print(f"Dataset saved to: {output_path}")
+        logger.info("Dataset saved to: %s", output_path)
         return str(output_path)
