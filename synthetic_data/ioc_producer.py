@@ -5,13 +5,74 @@ IOC (Indicators of Compromise) producer for generating synthetic IOC findings.
 from typing import Dict, List, Any
 import random
 import uuid
-from base_producer import BaseProducer
+from .base_producer import BaseProducer
 
 class IocProducer(BaseProducer):
     """Producer for synthetic IOC scanner findings."""
 
     def __init__(self):
         super().__init__("ioc")
+        self.malicious_domains = [
+            "evil-update.{tld}", "cdn-mitm.{tld}", "telemetry-{n}.badcloud.{tld}", "secure-login.{tld}/auth",
+            "dropper.{tld}/payload", "c2-{n}.shadow.{tld}", "sso.{tld}.cdn-cache.net"
+        ]
+        self.malicious_ips = [
+            "45.67.230.{octet}", "77.247.110.{octet}", "185.220.101.{octet}", "203.0.113.{octet}", "198.51.100.{octet}"
+        ]
+        self.malicious_urls = [
+            "hxxp://{dom}/download/{n}", "hxxps://{dom}/update/{n}", "hxxp://{ip}/stash/{n}",
+            "hxxp://{dom}/panel/login.php", "hxxps://{dom}/cdn/{n}/payload.bin"
+        ]
+        self.malicious_hashes = [
+            "d41d8cd98f00b204e9800998ecf8427e", "44d88612fea8a8f36de82e1278abb02f", "81dc9bdb52d04dc20036dbd8313ed055",
+            "5f4dcc3b5aa765d61d8327deb882cf99", "e99a18c428cb38d5f260853678922e03"
+        ]
+        self.yara_rules = [
+            "rule SuspiciousPowerShell { strings: $ps = ""powershell"" nocase condition: $ps }",
+            "rule CredentialDump { strings: $m = ""mimikatz"" nocase condition: $m }",
+            "rule C2Beacon { strings: $j = ""ja3"" condition: $j }"
+        ]
+        self.registry_keys = [
+            r"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\OneDriveUpdate",
+            r"HKLM\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack",
+            r"HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command"
+        ]
+        self.distro_profiles = [
+            {"name": "Debian", "versions": ["11", "12"], "pkg": "apt", "weight": 0.24},
+            {"name": "Ubuntu", "versions": ["20.04", "22.04", "24.04"], "pkg": "apt", "weight": 0.28},
+            {"name": "Fedora", "versions": ["38", "39", "40"], "pkg": "dnf", "weight": 0.2},
+            {"name": "Arch", "versions": ["rolling"], "pkg": "pacman", "weight": 0.14},
+            {"name": "Alpine", "versions": ["3.18", "3.19", "3.20"], "pkg": "apk", "weight": 0.14},
+        ]
+
+    def _random_indicator(self, severity: str = "low") -> Dict[str, str]:
+        tlds = ["com", "net", "org", "io", "dev", "cloud"]
+        octet = random.randint(10, 254)
+        n = random.randint(1, 9999)
+        dom = random.choice(self.malicious_domains).format(tld=random.choice(tlds), n=n)
+        ip = random.choice(self.malicious_ips).format(octet=octet)
+        url = random.choice(self.malicious_urls).format(dom=dom, ip=ip, n=n)
+        hash_value = random.choice(self.malicious_hashes)
+        yara_rule = random.choice(self.yara_rules)
+        reg_key = random.choice(self.registry_keys)
+
+        options = [
+            {"type": "domain", "value": dom, "context": "known C2 hostname"},
+            {"type": "ip", "value": ip, "context": "anonymizing exit or bulletproof host"},
+            {"type": "url", "value": url, "context": "payload staging or panel"},
+            {"type": "hash", "value": hash_value, "context": "malware sample"},
+            {"type": "yara", "value": yara_rule, "context": "behavioral signature"},
+            {"type": "registry", "value": reg_key, "context": "persistence mechanism"}
+        ]
+
+        weight = {
+            "info": [0.25, 0.15, 0.2, 0.1, 0.1, 0.2],
+            "low": [0.2, 0.2, 0.2, 0.15, 0.1, 0.15],
+            "high": [0.15, 0.2, 0.25, 0.2, 0.1, 0.1],
+            "critical": [0.1, 0.25, 0.25, 0.25, 0.1, 0.05]
+        }.get(severity, [1/6.0] * 6)
+
+        return random.choices(options, weights=weight, k=1)[0]
 
     def _generate_normal_ioc(self) -> Dict[str, Any]:
         """Generate a normal IOC finding."""
@@ -26,6 +87,8 @@ class IocProducer(BaseProducer):
         process_cmd = random.choice(normal_processes)
         pid = random.randint(1000, 9999)
 
+        indicator = self._random_indicator()
+
         return {
             "id": f"ioc_{uuid.uuid4().hex[:8]}",
             "title": "Process IOC Detected",
@@ -36,7 +99,11 @@ class IocProducer(BaseProducer):
             "metadata": {
                 "command": process_cmd,
                 "pid": str(pid),
-                "pattern_match": "false"
+                "pattern_match": "false",
+                "indicator": indicator.get("value"),
+                "indicator_type": indicator.get("type"),
+                "context": indicator.get("context"),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "ioc",
@@ -79,6 +146,8 @@ class IocProducer(BaseProducer):
         process_cmd = random.choice(suspicious_processes)
         pid = random.randint(1000, 9999)
 
+        indicator = self._random_indicator()
+
         return {
             "id": f"ioc_{uuid.uuid4().hex[:8]}",
             "title": "Process IOC Detected",
@@ -89,7 +158,11 @@ class IocProducer(BaseProducer):
             "metadata": {
                 "command": process_cmd,
                 "pid": str(pid),
-                "pattern_match": "true"
+                "pattern_match": "true",
+                "indicator": indicator.get("value"),
+                "indicator_type": indicator.get("type"),
+                "context": indicator.get("context"),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "ioc",
@@ -127,6 +200,8 @@ class IocProducer(BaseProducer):
         process_cmd = random.choice(malicious_processes)
         pid = random.randint(1000, 9999)
 
+        indicator = self._random_indicator(severity="high")
+
         return {
             "id": f"ioc_{uuid.uuid4().hex[:8]}",
             "title": "Process IOC Detected",
@@ -137,7 +212,11 @@ class IocProducer(BaseProducer):
             "metadata": {
                 "command": process_cmd,
                 "pid": str(pid),
-                "pattern_match": "true"
+                "pattern_match": "true",
+                "indicator": indicator.get("value"),
+                "indicator_type": indicator.get("type"),
+                "context": indicator.get("context"),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "ioc",
@@ -175,6 +254,8 @@ class IocProducer(BaseProducer):
         process_cmd = random.choice(deleted_executables)
         pid = random.randint(1000, 9999)
 
+        indicator = self._random_indicator(severity="critical")
+
         return {
             "id": f"ioc_{uuid.uuid4().hex[:8]}",
             "title": "Process IOC Detected",
@@ -185,7 +266,11 @@ class IocProducer(BaseProducer):
             "metadata": {
                 "command": process_cmd,
                 "pid": str(pid),
-                "deleted_executable": "true"
+                "deleted_executable": "true",
+                "indicator": indicator.get("value"),
+                "indicator_type": indicator.get("type"),
+                "context": indicator.get("context"),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "ioc",
@@ -223,6 +308,8 @@ class IocProducer(BaseProducer):
         process_cmd = random.choice(world_writable_executables)
         pid = random.randint(1000, 9999)
 
+        indicator = self._random_indicator(severity="high")
+
         return {
             "id": f"ioc_{uuid.uuid4().hex[:8]}",
             "title": "Process IOC Detected",
@@ -233,7 +320,11 @@ class IocProducer(BaseProducer):
             "metadata": {
                 "command": process_cmd,
                 "pid": str(pid),
-                "world_writable_executable": "true"
+                "world_writable_executable": "true",
+                "indicator": indicator.get("value"),
+                "indicator_type": indicator.get("type"),
+                "context": indicator.get("context"),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "ioc",
@@ -256,6 +347,20 @@ class IocProducer(BaseProducer):
             "host_role": None,
             "host_role_rationale": None,
             "metric_drift": None
+        }
+
+    def _sample_distro_profile(self) -> Dict[str, str]:
+        """Sample a distro profile to enrich IOC metadata with realistic host context."""
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        return {
+            "distro": profile["name"],
+            "distro_version": version,
+            "package_manager": profile["pkg"],
+            "kernel": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
         }
 
     def generate_findings(self, count: int) -> List[Dict[str, Any]]:

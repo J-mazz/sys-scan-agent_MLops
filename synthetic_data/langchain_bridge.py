@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import sys
+import os
+from typing import List
 from typing import Any, Dict, List
 
 try:
@@ -101,17 +103,55 @@ def run_langchain_correlation(payload: Dict[str, Any]) -> Dict[str, Any]:
     from langchain_core.prompts import PromptTemplate
     from langchain_openai import ChatOpenAI
 
-    model = payload.get("model", "gpt-4o-mini")
+    def _model_candidates() -> List[str]:
+        env_models = os.getenv("SYNTHETIC_LANGCHAIN_MODELS")
+        if env_models:
+            return [m.strip() for m in env_models.split(",") if m.strip()]
+        return ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1"]
+
+    models = [payload.get("model")] if payload.get("model") else []
+    models.extend(_model_candidates())
+    # de-dup preserving order
+    seen = set()
+    ordered_models = []
+    for m in models:
+        if m and m not in seen:
+            seen.add(m)
+            ordered_models.append(m)
+
     temperature = float(payload.get("temperature", 0.1))
     candidates = payload["candidates"]
 
-    llm = ChatOpenAI(model=model, temperature=temperature, max_tokens=600)
+    api_key = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_API_BASE")
 
-    prompt_text = render_prompt(candidates)
-    completion = llm.invoke(prompt_text)
-    raw_text = completion.content if hasattr(completion, "content") else str(completion)
+    # Supply both api_key and openai_api_key for compatibility across langchain_openai versions.
+    # Avoid passing unsupported parameters (e.g., project) to prevent API signature errors.
+    last_exc: Exception | None = None
+    correlation = None
+    for model in ordered_models:
+        try:
+            llm = ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                max_tokens=600,
+                api_key=api_key,
+                openai_api_key=api_key,
+                base_url=base_url,
+            )
 
-    correlation = json.loads(raw_text)
+            prompt_text = render_prompt(candidates)
+            completion = llm.invoke(prompt_text)
+            raw_text = completion.content if hasattr(completion, "content") else str(completion)
+
+            correlation = json.loads(raw_text)
+            break
+        except Exception as exc:  # pragma: no cover - external service
+            last_exc = exc
+            continue
+
+    if correlation is None and last_exc:
+        raise last_exc
 
     # Minimal validation mirroring the producer expectations.
     required_fields = {"title", "description", "severity", "risk_score", "related_ids"}

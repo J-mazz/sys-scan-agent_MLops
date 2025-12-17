@@ -11,13 +11,16 @@ import os
 import sys
 import logging
 import warnings
+import random
+import asyncio
 
-from producer_registry import registry
-from correlation_registry import correlation_registry
-from advanced_verification_agent import AdvancedVerificationAgent
-from data_transformation_pipeline import DataTransformationPipeline
-
-DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+from .producer_registry import registry
+from .base_producer import AggregatingProducer
+from .correlation_registry import correlation_registry
+from .advanced_verification_agent import AdvancedVerificationAgent
+from .data_transformation_pipeline import DataTransformationPipeline
+from .deduplication_agent import DeduplicationAgent
+from .justification import build_rationale, ensure_kb_refs
 
 
 def _env_flag(name: str) -> bool:
@@ -99,7 +102,7 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings(
     "ignore",
-    message="The global interpreter lock \(GIL\) has been enabled to load module 'orjson.orjson'",
+    message="The global interpreter lock (GIL) has been enabled to load module 'orjson.orjson'",
     category=RuntimeWarning,
 )
 
@@ -109,7 +112,15 @@ _load_env_files()
 class SyntheticDataPipeline:
     """Complete pipeline for generating, correlating, verifying, and transforming synthetic security data."""
 
-    def __init__(self, use_langchain: bool = True, conservative_parallel: bool = False, gpu_optimized: Optional[bool] = None, fast_mode: bool = False, max_workers: Optional[int] = None):
+    def __init__(
+        self,
+        use_langchain: bool = True,
+        conservative_parallel: bool = False,
+        gpu_optimized: Optional[bool] = None,
+        fast_mode: bool = False,
+        max_workers: Optional[int] = None,
+        sampling_config: Optional[Dict[str, float]] = None,
+    ):
         """
         Initialize the synthetic data pipeline.
 
@@ -124,10 +135,31 @@ class SyntheticDataPipeline:
         self.logger = logging.getLogger("synthetic_data.pipeline")
         self.logger.setLevel(logging.INFO)
 
-        self.use_langchain = use_langchain
+        # Allow environment override to force-enable LangChain even if a caller passes False
+        force_langchain_env = os.getenv("SYNTHETIC_FORCE_LANGCHAIN")
+        if force_langchain_env is not None:
+            self.use_langchain = force_langchain_env.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            self.use_langchain = use_langchain
         self.conservative_parallel = conservative_parallel
         self.gpu_optimized = gpu_optimized
         self.fast_mode = fast_mode
+        # Default high to avoid unintended downsampling; still overridable via env
+        self.sampling_target = int(os.getenv("SYNTHETIC_SAMPLING_TARGET", "2500"))
+        self.disable_dedup = os.getenv("SYNTHETIC_DISABLE_DEDUP", "false").lower() in {"1", "true", "yes", "on"}
+        self.disable_sampling = os.getenv("SYNTHETIC_DISABLE_SAMPLING", "false").lower() in {"1", "true", "yes", "on"}
+
+        # Severity mix for sampling — defaults preserve current behavior but allow overrides
+        default_sampling = {"medium_ratio": 0.5, "low_ratio": 0.25}
+        env_sampling = os.getenv("SYNTHETIC_SAMPLING_RATIOS")
+        parsed_env_sampling: Dict[str, float] = {}
+        if env_sampling:
+            try:
+                parsed_env_sampling = json.loads(env_sampling)
+            except json.JSONDecodeError:
+                self.logger.warning("Invalid JSON for SYNTHETIC_SAMPLING_RATIOS; using defaults")
+
+        self.sampling_ratios = {**default_sampling, **parsed_env_sampling, **(sampling_config or {})}
 
         if max_workers is not None:
             self.max_workers = max(1, max_workers)
@@ -149,6 +181,7 @@ class SyntheticDataPipeline:
 
         self.producer_registry = registry
         self.correlation_registry = correlation_registry
+        self.dedup_agent = DeduplicationAgent()
         self.correlation_registry.enable_langchain(self.use_langchain)
         if self.use_langchain:  # pragma: no cover - optional LangChain runtime
             try:
@@ -299,20 +332,191 @@ class SyntheticDataPipeline:
             self.logger.error("❌ Pipeline Execution Failed: %s", e)
             raise
 
+    async def execute_pipeline_async(
+        self,
+        producer_counts: Optional[Dict[str, int]] = None,
+        output_path: Optional[Union[str, Path]] = None,
+        output_format: str = "optimized_json",
+        compress: bool = False,
+        save_intermediate: bool = False,
+        max_iterations: int = 3,
+    ) -> Dict[str, Any]:
+        """Async execution with asyncio-friendly to_thread bridges per stage."""
+
+        self.execution_state["stage"] = "running"
+        self.execution_state["start_time"] = datetime.now().isoformat()
+
+        self.logger.info("🚀 Starting Synthetic Data Pipeline Execution (async)")
+        self.logger.info("=" * 60)
+
+        try:
+            # Stage 1: Generate findings
+            self.logger.info("📊 Stage 1: Generating Findings (async)")
+            findings = await asyncio.to_thread(self._execute_finding_generation, producer_counts)
+            self.execution_state["findings_generated"] = sum(len(f) for f in findings.values())
+
+            if save_intermediate:
+                await asyncio.to_thread(self._save_intermediate, "raw_findings.json", findings)
+
+            # Stage 2: Correlations
+            self.logger.info("🔗 Stage 2: Analyzing Correlations (async)")
+            self.correlation_registry.enable_langchain(self.use_langchain)
+            correlations = await asyncio.to_thread(self._execute_correlation_analysis, findings)
+            self.execution_state["correlations_generated"] = len(correlations)
+
+            if save_intermediate:
+                await asyncio.to_thread(self._save_intermediate, "correlations.json", correlations)
+
+            # Stage 3: Verification (iterative)
+            self.logger.info("✅ Stage 3: Verifying and Refining Data Quality (async)")
+            verification_report = None
+            for iteration in range(max_iterations):
+                self.logger.info(f"  Iteration {iteration + 1}/{max_iterations}: Running verification...")
+                verification_report = await asyncio.to_thread(self._execute_verification, findings, correlations)
+                status = verification_report.get("overall_status", "unknown")
+                self.logger.info(f"    Status: {status.upper()}")
+
+                if status == "passed":
+                    self.execution_state["verification_passed"] = True
+                    break
+                else:
+                    findings = await asyncio.to_thread(self._refine_findings, findings, verification_report, producer_counts)
+                    correlations = await asyncio.to_thread(self._execute_correlation_analysis, findings)
+
+            # Stage 4: Transformation
+            self.logger.info("📦 Stage 4: Transforming Dataset (async)")
+            transformed_dataset = await asyncio.to_thread(
+                self._execute_transformation,
+                findings,
+                correlations,
+                verification_report,
+                output_format,
+                compress,
+            )
+
+            final_report = {
+                "findings": findings,
+                "correlations": correlations,
+                "verification_report": verification_report,
+                "transformed_dataset": transformed_dataset,
+                "execution_state": self.execution_state
+            }
+
+            # Optional save
+            if output_path:
+                await asyncio.to_thread(self._save_final_dataset, transformed_dataset, output_path, compress)
+
+            self.execution_state["stage"] = "completed"
+            self.execution_state["end_time"] = datetime.now().isoformat()
+
+            self.logger.info(f"📈 Generated {self.execution_state['findings_generated']} findings (async)")
+            self.logger.info(f"🔗 Generated {self.execution_state['correlations_generated']} correlations (async)")
+            self.logger.info(f"✅ Verification: {verification_report.get('overall_status', 'unknown').upper() if verification_report else 'UNKNOWN'}")
+
+            return final_report
+
+        except Exception as e:
+            self.execution_state["stage"] = "failed"
+            self.execution_state["error"] = str(e)
+            self.execution_state["end_time"] = datetime.now().isoformat()
+
+            self.logger.error("❌ Pipeline Execution Failed (async): %s", e)
+            raise
+
     def _execute_finding_generation(self, producer_counts: Optional[Dict[str, int]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Execute finding generation from all producers."""
         self.logger.info(f"  Generating findings from {len(self.producer_registry.list_producers())} producers...")
 
-        if producer_counts is None:
-            # Default: 10 findings per producer
-            producer_counts = {name: 10 for name in self.producer_registry.list_producers()}
+        findings = self.producer_registry.generate_all_findings(
+            producer_counts,
+            self.conservative_parallel,
+            self.gpu_optimized,
+            self.max_workers,
+            density_mode="high",
+        )
 
-        findings = self.producer_registry.generate_all_findings(producer_counts, self.conservative_parallel, self.gpu_optimized, self.max_workers)
+        # Inject rationales and KB references to improve cohesion and reduce null fields
+        for group in findings.values():
+            for finding in group:
+                ensure_kb_refs(finding)
+                if not finding.get("rationale"):
+                    finding["rationale"] = build_rationale(finding)
 
-        total_findings = sum(len(f) for f in findings.values())
-        self.logger.info(f"  ✓ Generated {total_findings} total findings")
+        flat_findings: List[Dict[str, Any]] = [f for group in findings.values() for f in group]
+        if self.disable_dedup:
+            deduped = flat_findings
+        else:
+            deduped = self.dedup_agent.deduplicate(flat_findings)
 
-        return findings
+        # Re-bucket by category after deduplication
+        rebucketed: Dict[str, List[Dict[str, Any]]] = {}
+        for finding in deduped:
+            category = finding.get("category", "unknown")
+            rebucketed.setdefault(category, []).append(finding)
+
+        if self.disable_sampling:
+            sampled = rebucketed
+        else:
+            sampled = self._apply_intelligent_sampling(rebucketed, target_count=self.sampling_target)
+
+        total_findings = sum(len(f) for f in sampled.values())
+        self.logger.info(f"  ✓ Generated {total_findings} total findings after deduplication and sampling")
+
+        return sampled
+
+    def _apply_intelligent_sampling(
+        self,
+        findings: Dict[str, List[Dict[str, Any]]],
+        target_count: Optional[int] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Apply stratified sampling to reduce volume while maintaining diversity.
+
+        Sampling ratios are configurable via:
+        - sampling_config argument on pipeline construction
+        - SYNTHETIC_SAMPLING_RATIOS env var (JSON, e.g. {"medium_ratio":0.4,"low_ratio":0.2})
+        Defaults: medium_ratio=0.5, low_ratio=0.25
+        """
+        if not findings:
+            return findings
+
+        if target_count is None:
+            target_count = self.sampling_target
+
+        total_findings = sum(len(f) for f in findings.values()) or 1
+
+        # If target is large enough, skip sampling entirely
+        if target_count >= total_findings:
+            return findings
+
+        medium_ratio = float(self.sampling_ratios.get("medium_ratio", 0.5))
+        low_ratio = float(self.sampling_ratios.get("low_ratio", 0.25))
+
+        sampled: Dict[str, List[Dict[str, Any]]] = {}
+
+        for category, category_findings in findings.items():
+            if not category_findings:
+                sampled[category] = []
+                continue
+
+            high_value = [f for f in category_findings if f.get("severity") in ["high", "critical"]]
+            medium_value = [f for f in category_findings if f.get("severity") == "medium"]
+            low_value = [f for f in category_findings if f.get("severity") in ["low", "info"]]
+
+            proportion = len(category_findings) / total_findings
+            category_target = max(2, int(target_count * proportion))
+
+            sampled_category: List[Dict[str, Any]] = []
+            sampled_category.extend(high_value)
+
+            medium_take = max(1, int(category_target * medium_ratio)) if medium_value else 0
+            low_take = max(1, int(category_target * low_ratio)) if low_value else 0
+
+            sampled_category.extend(random.sample(medium_value, min(len(medium_value), medium_take)) if medium_value else [])
+            sampled_category.extend(random.sample(low_value, min(len(low_value), low_take)) if low_value else [])
+
+            sampled[category] = sampled_category[:category_target]
+
+        return sampled
 
     def _execute_correlation_analysis(self, findings: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         """Execute correlation analysis across all findings."""
@@ -373,28 +577,96 @@ class SyntheticDataPipeline:
         self,
         current_findings: Dict[str, List[Dict[str, Any]]],
         verification_report: Dict[str, Any],
-        producer_counts: Optional[Dict[str, int]] = None
+        producer_counts: Optional[Dict[str, int]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Refine findings based on verification feedback to improve data quality.
 
-        Args:
-            current_findings: Current findings dictionary
-            verification_report: Report from verification stage
-            producer_counts: Original producer counts
-
-        Returns:
-            Refined findings dictionary
+        Strategy:
+        - Parse verification stages to identify problematic categories/producers.
+        - Regenerate only those categories when possible.
+        - Fall back to full regeneration if we cannot pinpoint categories.
         """
         self.logger.info("    🔄 Refining findings based on verification feedback...")
 
-        # For now, simple approach: regenerate all findings if verification failed
-        # TODO: Implement targeted refinement based on specific verifier failures
-        if verification_report.get("overall_status") != "passed":
-            self.logger.info("    Regenerating all findings to improve quality...")
-            return self._execute_finding_generation(producer_counts)
-        else:
+        if verification_report.get("overall_status") == "passed":
             return current_findings
+
+        # Determine which categories need regeneration
+        problem_categories = self._extract_problem_categories(verification_report, current_findings)
+
+        if not problem_categories:
+            self.logger.info("    No specific categories identified; regenerating all findings...")
+            return self._execute_finding_generation(producer_counts)
+
+        self.logger.info("    Targeted regeneration for categories: %s", ", ".join(sorted(problem_categories)))
+
+        # Regenerate targeted categories
+        regenerated: Dict[str, List[Dict[str, Any]]] = {}
+        for category in problem_categories:
+            try:
+                producer = self.producer_registry.get_producer(category)
+            except ValueError:
+                self.logger.warning("    No producer found for category '%s'; skipping", category)
+                continue
+
+            count = (producer_counts or {}).get(category)
+            if count is None:
+                count = 100  # reasonable default if not provided
+
+            try:
+                new_findings = producer.generate_findings(count)
+                if isinstance(producer, AggregatingProducer):
+                    new_findings = producer.aggregate_findings(new_findings)
+            except Exception as exc:  # pragma: no cover - defensive
+                self.logger.error("    Error regenerating %s: %s", category, exc)
+                continue
+
+            for f in new_findings:
+                ensure_kb_refs(f)
+                if not f.get("rationale"):
+                    f["rationale"] = build_rationale(f)
+
+            regenerated[category] = new_findings
+
+        if not regenerated:
+            self.logger.info("    Regeneration produced no updates; falling back to full regeneration.")
+            return self._execute_finding_generation(producer_counts)
+
+        # Merge regenerated categories back into the current findings, then re-run dedup/sampling to keep distribution sane
+        merged: Dict[str, List[Dict[str, Any]]] = {**current_findings, **regenerated}
+
+        flat = [f for group in merged.values() for f in group]
+        if not self.disable_dedup:
+            flat = self.dedup_agent.deduplicate(flat)
+
+        rebucketed: Dict[str, List[Dict[str, Any]]] = {}
+        for finding in flat:
+            rebucketed.setdefault(finding.get("category", "unknown"), []).append(finding)
+
+        if self.disable_sampling:
+            return rebucketed
+
+        return self._apply_intelligent_sampling(rebucketed, target_count=self.sampling_target)
+
+    def _extract_problem_categories(self, verification_report: Dict[str, Any], current_findings: Dict[str, List[Dict[str, Any]]]) -> set:
+        """Inspect verification report for categories/scanners that failed quality checks."""
+        categories = set()
+
+        stages = verification_report.get("stages", {})
+
+        schema_stage = stages.get("schema_validation", {})
+        for detail in schema_stage.get("invalid_details", []) or []:
+            scanner = detail.get("scanner")
+            if scanner and scanner != "correlation":
+                categories.add(scanner)
+
+        # If consistency issues are present, we conservatively refresh all categories involved in findings
+        consistency_stage = stages.get("consistency_check", {})
+        if consistency_stage.get("status") in {"warning", "failed"} and not categories:
+            categories.update(current_findings.keys())
+
+        return categories
 
     def _save_final_dataset(
         self,
@@ -546,14 +818,14 @@ def run_synthetic_data_pipeline(
     )
 
 if __name__ == "__main__":
-    # Example usage
+    # Example usage (production-leaning defaults)
     example_logger = logging.getLogger("synthetic_data.pipeline.example")
     example_logger.info("Running synthetic data pipeline...")
 
     result = run_synthetic_data_pipeline(
         output_path="synthetic_dataset_example.json",
-        producer_counts={"processes": 5, "network": 5, "kernel_params": 3},
-        use_langchain=False,  # Set to True if LangChain is available
+        producer_counts=None,  # use density_mode="high" defaults per producer_registry
+        use_langchain=True,
         compress=False
     )
 

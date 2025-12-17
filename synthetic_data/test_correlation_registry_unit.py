@@ -2,9 +2,9 @@ from typing import Any, Dict, List
 
 import pytest
 
-from base_correlation_producer import BaseCorrelationProducer
-import correlation_registry as registry_module
-from correlation_registry import CorrelationRegistry
+from synthetic_data.base_correlation_producer import BaseCorrelationProducer
+import synthetic_data.correlation_registry as registry_module
+from synthetic_data.correlation_registry import CorrelationRegistry
 
 
 class StubCorrelationProducer(BaseCorrelationProducer):

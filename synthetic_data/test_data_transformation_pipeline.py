@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import pytest
 
-from data_transformation_pipeline import DataTransformationPipeline
+from synthetic_data.data_transformation_pipeline import DataTransformationPipeline
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from base_correlation_producer import BaseCorrelationProducer
+from synthetic_data.base_correlation_producer import BaseCorrelationProducer
 
 
 class DummyCorrelationProducer(BaseCorrelationProducer):

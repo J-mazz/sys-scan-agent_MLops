@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from base_verifier import BaseVerifier
+from synthetic_data.base_verifier import BaseVerifier
 
 
 class DemoVerifier(BaseVerifier):

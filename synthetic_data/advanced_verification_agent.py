@@ -70,9 +70,19 @@ class AdvancedVerificationAgent:
         correlations: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Validate that all findings conform to the expected schema."""
+        # Keep schema validation focused on core fields used by the pipeline and tests.
+        # Optional enrichments (baseline_status, probability_actionable, rationale, etc.) are treated
+        # as nice-to-have rather than hard requirements so we don't fail otherwise healthy datasets.
         required_fields = [
-            "id", "title", "severity", "risk_score", "description",
-            "metadata", "category", "tags", "risk_subscores"
+            "id",
+            "title",
+            "severity",
+            "risk_score",
+            "description",
+            "metadata",
+            "category",
+            "tags",
+            "risk_subscores",
         ]
 
         total_findings = 0
@@ -153,10 +163,10 @@ class AdvancedVerificationAgent:
 
         severity_mapping = {
             "info": (0, 20),
-            "low": (21, 40),
-            "medium": (41, 60),
-            "high": (61, 80),
-            "critical": (81, 100)
+            "low": (20, 40),
+            "medium": (40, 70),
+            "high": (70, 90),
+            "critical": (90, 100)
         }
 
         for scanner_type, scanner_findings in findings.items():

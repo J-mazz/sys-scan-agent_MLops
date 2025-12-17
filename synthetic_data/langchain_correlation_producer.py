@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from base_correlation_producer import BaseCorrelationProducer
+from .base_correlation_producer import BaseCorrelationProducer
 from langchain_bridge import render_prompt
 
 
@@ -21,29 +21,22 @@ logger = logging.getLogger(__name__)
 def _resolve_external_python() -> Optional[str]:
     """Locate a Python 3.12 interpreter for the LangChain bridge."""
 
-    candidates: List[Optional[Path]] = []
+    module_dir = Path(__file__).resolve().parent
+    repo_root = module_dir.parent
 
     override = os.getenv("SYNTHETIC_DATA_LANGCHAIN_PYTHON")
     if override:
-        candidates.append(Path(override))
+        candidate = Path(override).expanduser()
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate)
 
-    module_dir = Path(__file__).resolve().parent
-    repo_root = module_dir.parent
-    candidates.append(repo_root / ".venv-3.12/bin/python")
+    repo_python = (repo_root / ".venv-3.12/bin/python").expanduser()
+    if repo_python.exists() and os.access(repo_python, os.X_OK):
+        return str(repo_python)
 
     python_path = shutil.which("python3.12")
     if python_path:
-        candidates.append(Path(python_path))
-
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        try:
-            resolved = candidate.expanduser().resolve(strict=True)
-        except FileNotFoundError:
-            continue
-        if os.access(resolved, os.X_OK):
-            return str(resolved)
+        return python_path
 
     return None
 
@@ -51,7 +44,9 @@ def _resolve_external_python() -> Optional[str]:
 ChatOpenAI = None  # type: ignore[assignment]
 _NATIVE_LANGCHAIN_AVAILABLE = False
 
-if sys.version_info < (3, 14):  # Native imports only when interpreter is supported
+# Defer native availability to cases where the API key is actually present.
+_env_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY".lower())
+if sys.version_info < (3, 14) and _env_api_key:  # Native imports only when interpreter is supported
     try:  # pragma: no cover - import path verified during integration
         from langchain_openai import ChatOpenAI  # type: ignore
         _NATIVE_LANGCHAIN_AVAILABLE = True
@@ -71,9 +66,14 @@ LANGCHAIN_CORRELATION_AVAILABLE = True  # Availability validated at instantiatio
 class LangChainCorrelationProducer(BaseCorrelationProducer):
     """Generates correlations by synthesizing cross-signal insights via LangChain."""
 
-    def __init__(self, model: str = "gpt-3.5-turbo", temperature: float = 0.1) -> None:
+    def __init__(self, model: str = "gpt-oss-120b", temperature: float = 0.1) -> None:
         super().__init__("langchain_correlation")
-        self.model_name = model
+        # Allow env override for model targeting and fallbacks
+        env_models = os.getenv("SYNTHETIC_LANGCHAIN_MODELS")
+        if env_models:
+            self.model_candidates = [m.strip() for m in env_models.split(",") if m.strip()]
+        else:
+            self.model_candidates = [model, "gpt-5-nano", "gpt-4.1"]
         self.temperature = temperature
         self.logger = logging.getLogger("synthetic_data.correlation.langchain")
         self.external_python = get_langchain_bridge_runtime()
@@ -90,13 +90,12 @@ class LangChainCorrelationProducer(BaseCorrelationProducer):
         if _NATIVE_LANGCHAIN_AVAILABLE:
             self.mode = "native"
             self.llm = self._initialise_native_llm()
+            if self.llm is None and bridge_available:
+                # Fallback to bridge if native failed (e.g., missing key)
+                self.mode = "bridge"
         elif bridge_available:
             self.mode = "bridge"
             self.llm = None
-            self.logger.info(
-                "LangChain correlations proxied via interpreter: %s",
-                self.external_python,
-            )
         else:
             self.mode = "disabled"
             self.llm = None
@@ -107,11 +106,25 @@ class LangChainCorrelationProducer(BaseCorrelationProducer):
     def _initialise_native_llm(self):  # pragma: no cover - requires external service
         if ChatOpenAI is None:
             return None
-        try:
-            return ChatOpenAI(model=self.model_name, temperature=self.temperature, max_tokens=600)
-        except Exception as exc:
-            self.logger.warning("Failed to initialise native LangChain LLM: %s", exc)
-            return None
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_API_BASE")
+        last_exc: Exception | None = None
+        for candidate in self.model_candidates:
+            try:
+                return ChatOpenAI(
+                    model=candidate,
+                    temperature=self.temperature,
+                    max_tokens=600,
+                    api_key=api_key,
+                    openai_api_key=api_key,
+                    base_url=base_url,
+                )
+            except Exception as exc:  # pragma: no cover - external call
+                last_exc = exc
+                continue
+        if last_exc:
+            self.logger.info("Native LangChain LLM unavailable (%s); will fallback to bridge if configured.", last_exc)
+        return None
 
     def analyze_correlations(self, findings: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         if not findings:
@@ -180,20 +193,22 @@ class LangChainCorrelationProducer(BaseCorrelationProducer):
     def _invoke_external_langchain(self, candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         payload = {
             "candidates": candidates,
-            "model": self.model_name,
+            "model": self.model_candidates[0] if self.model_candidates else None,
             "temperature": self.temperature,
         }
 
         command = [self.external_python, "-m", "synthetic_data.langchain_bridge"]
 
         try:
+            env = os.environ.copy()
+
             completed = subprocess.run(
                 command,
                 input=json.dumps(payload),
                 text=True,
                 capture_output=True,
                 timeout=self.bridge_timeout,
-                env=os.environ.copy(),
+                env=env,
                 check=False,
             )
         except Exception as exc:  # pragma: no cover - subprocess errors are rare

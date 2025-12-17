@@ -4,12 +4,13 @@ Registry for managing correlation producers.
 
 from typing import Dict, List, Any, Optional
 import logging
-from base_correlation_producer import BaseCorrelationProducer
-from process_network_correlation_producer import ProcessNetworkCorrelationProducer
-from filesystem_correlation_producer import FileSystemCorrelationProducer
-from kernel_correlation_producer import KernelCorrelationProducer
+from .base_correlation_producer import BaseCorrelationProducer
+from .process_network_correlation_producer import ProcessNetworkCorrelationProducer
+from .filesystem_correlation_producer import FileSystemCorrelationProducer
+from .kernel_correlation_producer import KernelCorrelationProducer
+from .dense_correlation_producer import DenseCorrelationProducer
 try:  # pragma: no cover - optional LangChain integration
-    from langchain_correlation_producer import (
+    from .langchain_correlation_producer import (
         LangChainCorrelationProducer,
         LANGCHAIN_CORRELATION_AVAILABLE,
     )
@@ -19,7 +20,7 @@ except ImportError:  # pragma: no cover - optional LangChain integration
 
 # Import parallel processing utilities
 try:  # pragma: no cover - optional parallel acceleration
-    from parallel_processor import process_correlations_parallel, get_parallel_processor
+    from .parallel_processor import process_correlations_parallel, get_parallel_processor
     PARALLEL_AVAILABLE = True
     logger = logging.getLogger(__name__)
     logger.info("Correlation parallel processing module imported successfully")
@@ -59,6 +60,7 @@ class CorrelationRegistry:
         self.register_correlation_producer("process_network", ProcessNetworkCorrelationProducer())
         self.register_correlation_producer("filesystem", FileSystemCorrelationProducer())
         self.register_correlation_producer("kernel", KernelCorrelationProducer())
+        self.register_correlation_producer("dense", DenseCorrelationProducer())
         if LANGCHAIN_CORRELATION_AVAILABLE and LangChainCorrelationProducer is not None:
             self.optional_producers["langchain"] = LangChainCorrelationProducer()
 

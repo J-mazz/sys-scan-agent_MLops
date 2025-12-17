@@ -5,13 +5,20 @@ World writable files producer for generating synthetic world-writable file findi
 from typing import Dict, List, Any
 import random
 import uuid
-from base_producer import BaseProducer
+from .base_producer import BaseProducer
 
 class WorldWritableProducer(BaseProducer):
     """Producer for synthetic world-writable files scanner findings."""
 
     def __init__(self):
         super().__init__("world_writable")
+        self.distro_profiles = [
+            {"name": "Debian", "versions": ["11", "12"], "pkg": "apt", "weight": 0.24},
+            {"name": "Ubuntu", "versions": ["20.04", "22.04", "24.04"], "pkg": "apt", "weight": 0.28},
+            {"name": "Fedora", "versions": ["38", "39", "40"], "pkg": "dnf", "weight": 0.2},
+            {"name": "Arch", "versions": ["rolling"], "pkg": "pacman", "weight": 0.14},
+            {"name": "Alpine", "versions": ["3.18", "3.19", "3.20"], "pkg": "apk", "weight": 0.14},
+        ]
 
     def _generate_normal_world_writable(self) -> Dict[str, Any]:
         """Generate a normal world-writable file finding."""
@@ -32,7 +39,10 @@ class WorldWritableProducer(BaseProducer):
             "risk_score": 10,
             "base_severity_score": 10,
             "description": "File is world writable",
-            "metadata": {},
+            "metadata": {
+                **self._sample_distro_profile(),
+                "path": file_path,
+            },
             "operational_error": False,
             "category": "world_writable",
             "tags": ["filesystem", "permissions", "normal"],
@@ -75,7 +85,10 @@ class WorldWritableProducer(BaseProducer):
             "risk_score": 50,
             "base_severity_score": 50,
             "description": "File is world writable",
-            "metadata": {},
+            "metadata": {
+                **self._sample_distro_profile(),
+                "path": file_path,
+            },
             "operational_error": False,
             "category": "world_writable",
             "tags": ["filesystem", "permissions", "suspicious", "security"],
@@ -119,7 +132,10 @@ class WorldWritableProducer(BaseProducer):
             "risk_score": 80,
             "base_severity_score": 80,
             "description": "File is world writable",
-            "metadata": {},
+            "metadata": {
+                **self._sample_distro_profile(),
+                "path": file_path,
+            },
             "operational_error": False,
             "category": "world_writable",
             "tags": ["filesystem", "permissions", "critical", "vulnerability"],
@@ -163,7 +179,9 @@ class WorldWritableProducer(BaseProducer):
             "base_severity_score": 50,
             "description": "Binary has file capabilities set",
             "metadata": {
-                "rule": "file_capability"
+                "rule": "file_capability",
+                "path": file_path,
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "world_writable",
@@ -207,3 +225,16 @@ class WorldWritableProducer(BaseProducer):
             findings.append(finding)
 
         return findings
+
+    def _sample_distro_profile(self) -> Dict[str, Any]:
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        return {
+            "distro": profile["name"],
+            "distro_version": version,
+            "package_manager": profile["pkg"],
+            "kernel": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
+        }

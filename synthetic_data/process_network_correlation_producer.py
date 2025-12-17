@@ -4,7 +4,7 @@ Process-Network correlation producer for analyzing relationships between process
 
 from typing import Dict, List, Any
 import random
-from base_correlation_producer import BaseCorrelationProducer
+from .base_correlation_producer import BaseCorrelationProducer
 
 class ProcessNetworkCorrelationProducer(BaseCorrelationProducer):
     """Analyzes correlations between process and network scanner findings."""
@@ -133,7 +133,8 @@ class ProcessNetworkCorrelationProducer(BaseCorrelationProducer):
             metadata={
                 "process_name": process_name,
                 "network_activities": len(network_ids),
-                "correlation_reason": "suspicious_process_network_activity"
+                "correlation_reason": "suspicious_process_network_activity",
+                **self._host_context(process),
             }
         )
 
@@ -155,7 +156,8 @@ class ProcessNetworkCorrelationProducer(BaseCorrelationProducer):
             metadata={
                 "process_name": process_name,
                 "c2_connections": len(c2_ids),
-                "correlation_reason": "malware_c2_communication"
+                "correlation_reason": "malware_c2_communication",
+                **self._host_context(process),
             }
         )
 
@@ -177,6 +179,17 @@ class ProcessNetworkCorrelationProducer(BaseCorrelationProducer):
             metadata={
                 "process_name": process_name,
                 "unusual_ports": len(port_ids),
-                "correlation_reason": "unusual_port_activity"
+                "correlation_reason": "unusual_port_activity",
+                **self._host_context(process),
             }
         )
+
+    def _host_context(self, process: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract host distro/kernel metadata from process finding to enrich correlations."""
+        meta = process.get("metadata", {}) or {}
+        return {
+            "distro": meta.get("distro"),
+            "distro_version": meta.get("distro_version"),
+            "package_manager": meta.get("package_manager"),
+            "kernel": meta.get("kernel_version") or meta.get("kernel"),
+        }

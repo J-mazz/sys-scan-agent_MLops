@@ -5,7 +5,7 @@ Schema verifier to ensure synthetic data matches the ground truth schema.
 from typing import Dict, List, Any, Tuple
 import json
 import os
-from base_verifier import BaseVerifier
+from .base_verifier import BaseVerifier
 
 class SchemaVerifier(BaseVerifier):
     """Verifier for JSON schema compliance."""
@@ -61,47 +61,69 @@ class SchemaVerifier(BaseVerifier):
 
     def _verify_finding_structure(self, finding: Dict[str, Any], index: int) -> List[str]:
         """Verify a single finding's structure."""
-        issues = []
-        required_fields = ["id", "title", "severity", "risk_score", "base_severity_score", "description", "metadata", "risk_subscores", "probability_actionable", "baseline_status", "tags"]
+        issues: List[str] = []
+        required_fields = [
+            "id",
+            "title",
+            "severity",
+            "risk_score",
+            "base_severity_score",
+            "description",
+            "metadata",
+            "risk_subscores",
+            "probability_actionable",
+            "baseline_status",
+            "tags",
+            "rationale",
+            "correlation_refs",
+        ]
 
-        for field in required_fields:
-            if field not in finding:
-                issues.append(self._log_issue(f"Finding {index}: Missing required field '{field}'"))
+        issues.extend(self._validate_required_fields(finding, required_fields, f"Finding {index}"))
+        issues.extend(self._validate_severity_and_scores(finding, f"Finding {index}"))
+        issues.extend(self._validate_probability(finding, "probability_actionable", f"Finding {index}"))
 
-        # Check severity values
-        if "severity" in finding:
-            valid_severities = ["info", "low", "medium", "high", "critical"]
-            if finding["severity"] not in valid_severities:
-                issues.append(self._log_issue(f"Finding {index}: Invalid severity '{finding['severity']}'"))
-
-        # Check risk scores are integers
-        for score_field in ["risk_score", "base_severity_score"]:
-            if score_field in finding and not isinstance(finding[score_field], int):
-                issues.append(self._log_issue(f"Finding {index}: {score_field} must be an integer"))
-
-        # Check risk_subscores structure
         if "risk_subscores" in finding:
-            subscores = finding["risk_subscores"]
-            required_subscores = ["impact", "exposure", "anomaly", "confidence"]
-            if not isinstance(subscores, dict):
-                issues.append(self._log_issue(f"Finding {index}: risk_subscores must be a dict"))
-            else:
-                for subscore in required_subscores:
-                    if subscore not in subscores:
-                        issues.append(self._log_issue(f"Finding {index}: Missing risk_subscore '{subscore}'"))
+            issues.extend(self._validate_risk_subscores(finding.get("risk_subscores"), f"Finding {index}"))
+
+        metadata = finding.get("metadata", {})
+        issues.extend(self._validate_host_metadata(metadata, f"Finding {index}"))
 
         return issues
 
     def _verify_correlation_structure(self, correlation: Dict[str, Any], index: int) -> List[str]:
         """Verify a single correlation's structure."""
-        issues = []
-        required_fields = ["id", "title", "related_finding_ids"]
+        issues: List[str] = []
+        required_fields = [
+            "id",
+            "title",
+            "severity",
+            "risk_score",
+            "base_severity_score",
+            "description",
+            "metadata",
+            "risk_subscores",
+            "probability_actionable",
+            "baseline_status",
+            "tags",
+            "rationale",
+            "correlation_refs",
+            "correlation_type",
+        ]
 
-        for field in required_fields:
-            if field not in correlation:
-                issues.append(self._log_issue(f"Correlation {index}: Missing required field '{field}'"))
+        issues.extend(self._validate_required_fields(correlation, required_fields, f"Correlation {index}"))
+        issues.extend(self._validate_severity_and_scores(correlation, f"Correlation {index}"))
+        issues.extend(self._validate_probability(correlation, "probability_actionable", f"Correlation {index}"))
 
-        if "related_finding_ids" in correlation and not isinstance(correlation["related_finding_ids"], list):
-            issues.append(self._log_issue(f"Correlation {index}: related_finding_ids must be a list"))
+        if "risk_subscores" in correlation:
+            issues.extend(self._validate_risk_subscores(correlation.get("risk_subscores"), f"Correlation {index}"))
+
+        metadata = correlation.get("metadata", {})
+        issues.extend(self._validate_host_metadata(metadata, f"Correlation {index}"))
+
+        # Validate correlation_refs list
+        if "correlation_refs" in correlation and not isinstance(correlation["correlation_refs"], list):
+            issues.append(self._log_issue(f"Correlation {index}: correlation_refs must be a list"))
+        elif "correlation_refs" in correlation and len(correlation.get("correlation_refs") or []) == 0:
+            issues.append(self._log_issue(f"Correlation {index}: correlation_refs must not be empty"))
 
         return issues

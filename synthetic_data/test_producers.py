@@ -10,7 +10,7 @@ import json
 # Add the synthetic_data directory to the path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from producer_registry import registry
+from synthetic_data.producer_registry import registry
 
 def test_producers():
     """Test all registered producers."""

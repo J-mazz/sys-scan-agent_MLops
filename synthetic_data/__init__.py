@@ -19,10 +19,10 @@ class BaseProducer(ABC):
     def __init__(self, scanner_name: str):
         self.scanner_name = scanner_name
         self.scenarios = {
-            'normal': 0.7,      # 70% normal findings
-            'suspicious': 0.2,  # 20% suspicious
-            'malicious': 0.08,  # 8% malicious
-            'edge_case': 0.02   # 2% edge cases
+            'normal': 0.20,
+            'suspicious': 0.30,
+            'malicious': 0.30,
+            'edge_case': 0.20
         }
 
     @abstractmethod

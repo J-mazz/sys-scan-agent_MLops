@@ -5,9 +5,9 @@ Process scanner producer for generating synthetic process-related findings.
 from typing import Dict, List, Any
 import random
 import uuid
-from base_producer import BaseProducer
+from .base_producer import AggregatingProducer
 
-class ProcessProducer(BaseProducer):
+class ProcessProducer(AggregatingProducer):
     """Producer for synthetic process scanner findings."""
 
     def __init__(self):
@@ -21,8 +21,51 @@ class ProcessProducer(BaseProducer):
             "/tmp/malicious", "/var/tmp/backdoor", "/home/user/.hidden/malware",
             "/usr/local/bin/suspicious", "/opt/evil/process"
         ]
+        # OS distro profiles to diversify host coverage across Debian/Fedora/Arch/Ubuntu
+        self.distro_profiles = [
+            {
+                "name": "Debian",
+                "versions": ["11", "12"],
+                "pkg_manager": "apt",
+                "init": "systemd",
+                "variant": "stable",
+                "weight": 0.26,
+            },
+            {
+                "name": "Ubuntu",
+                "versions": ["20.04", "22.04", "24.04"],
+                "pkg_manager": "apt",
+                "init": "systemd",
+                "variant": "lts",
+                "weight": 0.28,
+            },
+            {
+                "name": "Fedora",
+                "versions": ["38", "39", "40"],
+                "pkg_manager": "dnf",
+                "init": "systemd",
+                "variant": "workstation",
+                "weight": 0.24,
+            },
+            {
+                "name": "Arch",
+                "versions": ["rolling"],
+                "pkg_manager": "pacman",
+                "init": "systemd",
+                "variant": "rolling",
+                "weight": 0.14,
+            },
+            {
+                "name": "Alpine",
+                "versions": ["3.18", "3.19", "3.20"],
+                "pkg_manager": "apk",
+                "init": "openrc",
+                "variant": "minimal",
+                "weight": 0.08,
+            },
+        ]
 
-    def generate_findings(self, count: int = 10) -> List[Dict[str, Any]]:
+    def generate_findings(self, count: int = 500) -> List[Dict[str, Any]]:
         """Generate synthetic process findings."""
         findings = []
 
@@ -31,7 +74,7 @@ class ProcessProducer(BaseProducer):
             finding = self._generate_process_finding(scenario, i)
             findings.append(finding)
 
-        return findings
+        return self.aggregate_findings(findings)
 
     def _generate_process_finding(self, scenario: str, index: int) -> Dict[str, Any]:
         """Generate a single process finding based on scenario."""
@@ -64,7 +107,8 @@ class ProcessProducer(BaseProducer):
                 "command": process,
                 "user": "root" if random.random() < 0.3 else "user",
                 "state": "S (sleeping)",
-                "ppid": random.randint(1, 1000)
+                "ppid": random.randint(1, 1000),
+                **self._sample_host_profile(),
             }
         )
 
@@ -90,7 +134,8 @@ class ProcessProducer(BaseProducer):
                 "user": "www-data" if random.random() < 0.5 else "user",
                 "state": "R (running)",
                 "ppid": random.randint(1, 1000),
-                "pattern_match": True
+                "pattern_match": True,
+                **self._sample_host_profile(),
             }
         )
 
@@ -117,7 +162,8 @@ class ProcessProducer(BaseProducer):
                 "state": "R (running)",
                 "ppid": 1,
                 "deleted_executable": True,
-                "world_writable_executable": True
+                "world_writable_executable": True,
+                **self._sample_host_profile(),
             }
         )
 
@@ -143,6 +189,28 @@ class ProcessProducer(BaseProducer):
                 "command": edge_case["cmd"],
                 "user": "kernel",
                 "state": "Z (zombie)" if random.random() < 0.5 else "S (sleeping)",
-                "ppid": 0
+                "ppid": 0,
+                **self._sample_host_profile(),
             }
         )
+
+    def _sample_host_profile(self) -> Dict[str, Any]:
+        """Return a host distro profile to diversify across major Linux families."""
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        selinux = profile["name"] in {"Fedora"}
+        apparmor = profile["name"] in {"Ubuntu", "Debian"}
+
+        return {
+            "distro": profile["name"],
+            "distro_variant": profile["variant"],
+            "distro_version": version,
+            "package_manager": profile["pkg_manager"],
+            "init_system": profile["init"],
+            "kernel_version": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
+            "selinux_enforcing": str(selinux).lower(),
+            "apparmor": str(apparmor).lower(),
+        }

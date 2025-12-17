@@ -2,8 +2,8 @@
 
 from typing import Any, Dict, List
 import random
-from datetime import datetime, timedelta
-from base_producer import BaseProducer
+from datetime import datetime, timedelta, timezone
+from .base_producer import BaseProducer
 
 class DnsProducer(BaseProducer):
     """Producer that emits DNS-related findings including suspicious domains."""
@@ -18,10 +18,17 @@ class DnsProducer(BaseProducer):
             "cryptominer.pool",
         ]
         self.malicious_tlds = [".ru", ".cn", ".tk", ".top", ".xyz"]
+        self.distro_profiles = [
+            {"name": "Debian", "versions": ["11", "12"], "pkg": "apt", "weight": 0.24},
+            {"name": "Ubuntu", "versions": ["20.04", "22.04", "24.04"], "pkg": "apt", "weight": 0.28},
+            {"name": "Fedora", "versions": ["38", "39", "40"], "pkg": "dnf", "weight": 0.2},
+            {"name": "Arch", "versions": ["rolling"], "pkg": "pacman", "weight": 0.14},
+            {"name": "Alpine", "versions": ["3.18", "3.19", "3.20"], "pkg": "apk", "weight": 0.14},
+        ]
 
     def generate_findings(self, count: int = 10) -> List[Dict[str, Any]]:
         findings: List[Dict[str, Any]] = []
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc)
 
         for index in range(count):
             scenario = self._choose_scenario()
@@ -60,6 +67,7 @@ class DnsProducer(BaseProducer):
             "client_ip": f"10.0.{random.randint(0, 10)}.{random.randint(5, 200)}",
             "query_timestamp": (base_time - timedelta(minutes=random.randint(0, 240))).isoformat(),
             "detections": random.sample(["domain_generation", "dns_tunneling", "fast_flux"], k=random.randint(0, 2)),
+            **self._sample_distro_profile(),
         }
 
         return self._generate_base_finding(
@@ -71,3 +79,16 @@ class DnsProducer(BaseProducer):
             description=description,
             metadata=metadata,
         )
+
+    def _sample_distro_profile(self) -> Dict[str, Any]:
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        return {
+            "distro": profile["name"],
+            "distro_version": version,
+            "package_manager": profile["pkg"],
+            "kernel": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
+        }

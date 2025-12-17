@@ -5,13 +5,20 @@ Kernel parameters producer for generating synthetic kernel parameter-related fin
 from typing import Dict, List, Any
 import random
 import uuid
-from base_producer import BaseProducer
+from .base_producer import BaseProducer
 
 class KernelParamsProducer(BaseProducer):
     """Producer for synthetic kernel parameter scanner findings."""
 
     def __init__(self):
         super().__init__("kernel_params")
+        self.distro_profiles = [
+            {"name": "Debian", "versions": ["11", "12"], "pkg": "apt", "weight": 0.24},
+            {"name": "Ubuntu", "versions": ["20.04", "22.04", "24.04"], "pkg": "apt", "weight": 0.28},
+            {"name": "Fedora", "versions": ["38", "39", "40"], "pkg": "dnf", "weight": 0.2},
+            {"name": "Arch", "versions": ["rolling"], "pkg": "pacman", "weight": 0.14},
+            {"name": "Alpine", "versions": ["3.18", "3.19", "3.20"], "pkg": "apk", "weight": 0.14},
+        ]
 
     def _generate_normal_kernel_param(self) -> Dict[str, Any]:
         """Generate a normal kernel parameter finding."""
@@ -44,7 +51,8 @@ class KernelParamsProducer(BaseProducer):
             "metadata": {
                 "current": current_value,
                 "desired": desired_value,
-                "status": "ok" if current_value == desired_value else "mismatch"
+                "status": "ok" if current_value == desired_value else "mismatch",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "kernel_params",
@@ -101,7 +109,8 @@ class KernelParamsProducer(BaseProducer):
             "metadata": {
                 "current": current_value,
                 "desired": desired_value,
-                "status": "mismatch" if current_value != desired_value else "ok"
+                "status": "mismatch" if current_value != desired_value else "ok",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "kernel_params",
@@ -154,7 +163,8 @@ class KernelParamsProducer(BaseProducer):
             "metadata": {
                 "current": current_value,
                 "desired": desired_value,
-                "status": "mismatch"
+                "status": "mismatch",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "kernel_params",
@@ -212,7 +222,8 @@ class KernelParamsProducer(BaseProducer):
             "metadata": {
                 "current": current_value,
                 "desired": desired_value,
-                "status": "mismatch"
+                "status": "mismatch",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "kernel_params",
@@ -284,3 +295,16 @@ class KernelParamsProducer(BaseProducer):
             findings.append(finding)
 
         return findings
+
+    def _sample_distro_profile(self) -> Dict[str, Any]:
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        return {
+            "distro": profile["name"],
+            "distro_version": version,
+            "package_manager": profile["pkg"],
+            "kernel": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
+        }

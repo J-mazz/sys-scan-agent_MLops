@@ -2,7 +2,7 @@
 Data transformation pipeline for optimizing and enriching synthetic datasets.
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Set
 import json
 import gzip
 import hashlib
@@ -57,12 +57,32 @@ class DataTransformationPipeline:
         if not LANGCHAIN_AVAILABLE:
             return
 
-        # Initialize LLM for data enrichment
-        self.llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            temperature=0.1,
-            max_tokens=500
-        )
+        def _model_candidates():
+            env_models = os.getenv("SYNTHETIC_LANGCHAIN_MODELS")
+            if env_models:
+                return [m.strip() for m in env_models.split(",") if m.strip()]
+            return ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1"]
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_API_BASE")
+        last_exc: Exception | None = None
+        self.llm = None
+        for candidate in _model_candidates():
+            try:
+                self.llm = ChatOpenAI(
+                    model=candidate,
+                    temperature=0.1,
+                    max_tokens=500,
+                    api_key=api_key,
+                    openai_api_key=api_key,
+                    base_url=base_url,
+                )
+                break
+            except Exception as exc:  # pragma: no cover - external
+                last_exc = exc
+                continue
+        if self.llm is None:
+            raise RuntimeError(f"Failed to initialize LangChain LLM for enrichment: {last_exc}")
 
         # Create enrichment prompt
         enrichment_prompt = PromptTemplate.from_template("""
@@ -169,6 +189,9 @@ class DataTransformationPipeline:
                 # Clean and standardize text fields
                 normalized_finding = self._clean_text_fields(normalized_finding)
 
+                # Drop null/None fields to avoid sparse payloads
+                normalized_finding = self._remove_null_fields(normalized_finding)
+
                 # Add processing metadata
                 normalized_finding["_processed_at"] = datetime.now().isoformat()
                 normalized_finding["_data_quality"] = self._assess_finding_quality(normalized_finding)
@@ -185,6 +208,7 @@ class DataTransformationPipeline:
             normalized_correlation = self._ensure_required_fields(correlation)
             normalized_correlation = self._normalize_data_types(normalized_correlation)
             normalized_correlation = self._clean_text_fields(normalized_correlation)
+            normalized_correlation = self._remove_null_fields(normalized_correlation)
 
             # Add correlation-specific metadata
             normalized_correlation["_correlation_strength"] = correlation.get("correlation_strength", 0.5)
@@ -250,6 +274,21 @@ class DataTransformationPipeline:
                     item[field] = item[field].strip()
 
         return item
+
+    def _remove_null_fields(self, item: Dict[str, Any], preserve_keys: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """Remove keys with None values to reduce null density in the dataset."""
+        if preserve_keys is None:
+            preserve_keys = set()
+
+        cleaned: Dict[str, Any] = {}
+        for key, value in item.items():
+            if value is None and key not in preserve_keys:
+                continue
+            if isinstance(value, dict):
+                cleaned[key] = self._remove_null_fields(value, preserve_keys)
+            else:
+                cleaned[key] = value
+        return cleaned
 
     def _assess_finding_quality(self, finding: Dict[str, Any]) -> float:
         """Assess the quality score of a finding."""

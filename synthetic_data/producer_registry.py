@@ -4,23 +4,24 @@ Registry for managing synthetic data producers.
 
 from typing import Dict, List, Any, Optional
 import logging
-from base_producer import BaseProducer
-from process_producer import ProcessProducer
-from network_producer import NetworkProducer
-from kernel_params_producer import KernelParamsProducer
-from modules_producer import ModulesProducer
-from world_writable_producer import WorldWritableProducer
-from suid_producer import SuidProducer
-from ioc_producer import IocProducer
-from mac_producer import MacProducer
-from dns_producer import DnsProducer
-from endpoint_behavior_producer import EndpointBehaviorProducer
+from .base_producer import BaseProducer, AggregatingProducer
+from .process_producer import ProcessProducer
+from .network_producer import NetworkProducer
+from .kernel_params_producer import KernelParamsProducer
+from .modules_producer import ModulesProducer
+from .world_writable_producer import WorldWritableProducer
+from .suid_producer import SuidProducer
+from .ioc_producer import IocProducer
+from .mac_producer import MacProducer
+from .dns_producer import DnsProducer
+from .endpoint_behavior_producer import EndpointBehaviorProducer
+from .context_aware_producer import ContextAwareProducer
 
 logger = logging.getLogger(__name__)
 
 # Import parallel processing utilities
 try:
-    from parallel_processor import process_producers_parallel, get_parallel_processor
+    from .parallel_processor import process_producers_parallel, get_parallel_processor
     PARALLEL_AVAILABLE = True
     logger.info("Parallel processing module imported successfully")
 except ImportError as e:
@@ -46,6 +47,7 @@ class ProducerRegistry:
         self.register_producer("mac", MacProducer())
         self.register_producer("dns", DnsProducer())
         self.register_producer("endpoint_behavior", EndpointBehaviorProducer())
+        self.register_producer("context", ContextAwareProducer())
 
     def register_producer(self, name: str, producer: BaseProducer):
         """Register a producer."""
@@ -61,12 +63,12 @@ class ProducerRegistry:
         """List all registered producers."""
         return list(self.producers.keys())
 
-    def generate_all_findings(self, counts: Optional[Dict[str, int]] = None, conservative_parallel: bool = True, gpu_optimized: Optional[bool] = None, max_workers: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def generate_all_findings(self, counts: Optional[Dict[str, int]] = None, conservative_parallel: bool = True, gpu_optimized: Optional[bool] = None, max_workers: Optional[int] = None, density_mode: str = "high") -> Dict[str, List[Dict[str, Any]]]:
         """Generate findings from all producers.
 
         Args:
             counts: Dictionary mapping producer names to number of findings to generate.
-                   If None, generates 10 findings per producer.
+                   If None, generates 100 findings per producer.
             conservative_parallel: Whether to use conservative parallel processing
             gpu_optimized: Whether to use GPU-optimized parallel processing
             max_workers: Maximum number of parallel workers
@@ -75,7 +77,22 @@ class ProducerRegistry:
             Dictionary mapping producer names to their findings.
         """
         if counts is None:
-            counts = {name: 10 for name in self.producers.keys()}
+            if density_mode == "high":
+                counts = {
+                    "processes": 500,
+                    "network": 500,
+                    "kernel_params": 300,
+                    "modules": 300,
+                    "world_writable": 400,
+                    "suid": 300,
+                    "ioc": 400,
+                    "mac": 200,
+                    "dns": 400,
+                    "endpoint_behavior": 500,
+                    "context": 400,
+                }
+            else:
+                counts = {name: 100 for name in self.producers.keys()}
 
         # Use parallel processing if available and beneficial
         if PARALLEL_AVAILABLE and len(self.producers) > 2:
@@ -95,9 +112,13 @@ class ProducerRegistry:
 
             results = {}
             for name, producer in self.producers.items():
-                count = counts.get(name, 10)
+                count = counts.get(name, 100)
                 try:
-                    results[name] = producer.generate_findings(count)
+                    raw_findings = producer.generate_findings(count)
+                    if isinstance(producer, AggregatingProducer):
+                        results[name] = producer.aggregate_findings(raw_findings)
+                    else:
+                        results[name] = raw_findings
                 except Exception as exc:
                     logger.error("Error generating findings for producer %s: %s", name, exc)
                     results[name] = []

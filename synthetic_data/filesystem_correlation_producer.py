@@ -4,7 +4,7 @@ File-System correlation producer for analyzing relationships between file permis
 
 from typing import Dict, List, Any
 import random
-from base_correlation_producer import BaseCorrelationProducer
+from .base_correlation_producer import BaseCorrelationProducer
 
 class FileSystemCorrelationProducer(BaseCorrelationProducer):
     """Analyzes correlations between file system findings and other scanner results."""
@@ -147,10 +147,11 @@ class FileSystemCorrelationProducer(BaseCorrelationProducer):
             related_findings=[ww_finding["id"]] + suid_ids,
             correlation_type="suid_world_writable",
             metadata={
-                "world_writable_location": ww_finding.get("title", ""),
+                "world_writable_location": ww_finding.get("metadata", {}).get("path") or ww_finding.get("title", ""),
                 "suid_binaries_count": len(suid_ids),
-                "correlation_reason": "privilege_escalation_risk"
-            }
+                "correlation_reason": "privilege_escalation_risk",
+            },
+            host_context=self._host_context(ww_finding),
         )
 
     def _create_capabilities_mac_correlation(
@@ -171,8 +172,9 @@ class FileSystemCorrelationProducer(BaseCorrelationProducer):
             metadata={
                 "capability_files_count": len(capability_files),
                 "mac_status": mac_titles,
-                "correlation_reason": "insufficient_mac_protection"
-            }
+                "correlation_reason": "insufficient_mac_protection",
+            },
+            host_context=self._host_context(capability_files[0] if capability_files else {}),
         )
 
     def _create_ioc_file_correlation(
@@ -193,6 +195,16 @@ class FileSystemCorrelationProducer(BaseCorrelationProducer):
             metadata={
                 "ioc_type": ioc_title,
                 "file_issues_count": len(file_ids),
-                "correlation_reason": "compromise_indicators_with_permissions"
-            }
+                "correlation_reason": "compromise_indicators_with_permissions",
+            },
+            host_context=self._host_context(ioc),
         )
+
+    def _host_context(self, finding: Dict[str, Any]) -> Dict[str, Any]:
+        meta = finding.get("metadata", {}) or {}
+        return {
+            "distro": meta.get("distro"),
+            "distro_version": meta.get("distro_version"),
+            "package_manager": meta.get("package_manager"),
+            "kernel": meta.get("kernel") or meta.get("kernel_version"),
+        }

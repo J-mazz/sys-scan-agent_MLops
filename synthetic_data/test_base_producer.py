@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from base_producer import BaseProducer
+from synthetic_data.base_producer import BaseProducer
 
 
 class SimpleProducer(BaseProducer):

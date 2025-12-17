@@ -4,7 +4,7 @@ Coherence verifier to ensure synthetic data is logically consistent.
 
 from typing import Dict, List, Any, Tuple
 from collections import defaultdict
-from base_verifier import BaseVerifier
+from .base_verifier import BaseVerifier
 
 class CoherenceVerifier(BaseVerifier):
     """Verifier for logical coherence in synthetic data."""
@@ -21,8 +21,9 @@ class CoherenceVerifier(BaseVerifier):
 
         findings = data["enriched_findings"]
 
-        # Check for duplicate IDs
+        # Check for duplicate IDs across findings and correlations
         ids = [f.get("id") for f in findings if f.get("id")]
+        ids.extend([c.get("id") for c in data.get("correlations", []) if c.get("id")])
         duplicate_ids = [id for id in ids if ids.count(id) > 1]
         if duplicate_ids:
             issues.append(self._log_issue(f"Duplicate finding IDs: {set(duplicate_ids)}"))
@@ -38,6 +39,11 @@ class CoherenceVerifier(BaseVerifier):
         # Check correlation references
         correlation_issues = self._verify_correlation_references(data)
         issues.extend(correlation_issues)
+
+        # Host metadata presence on correlations
+        for i, correlation in enumerate(data.get("correlations", [])):
+            metadata = correlation.get("metadata", {})
+            issues.extend(self._validate_host_metadata(metadata, f"Correlation {i}"))
 
         return len(issues) == 0, issues
 
@@ -102,18 +108,18 @@ class CoherenceVerifier(BaseVerifier):
         # Build set of finding IDs
         finding_ids = {f.get("id") for f in findings if f.get("id")}
 
-        # Check correlation references
+        # Check correlation references (use new correlation_refs, fallback to related_finding_ids)
         for correlation in correlations:
-            related_ids = correlation.get("related_finding_ids", [])
+            related_ids = correlation.get("correlation_refs") or correlation.get("related_finding_ids", [])
             for related_id in related_ids:
                 if related_id not in finding_ids:
                     issues.append(self._log_issue(f"Correlation {correlation.get('id')} references non-existent finding '{related_id}'"))
 
         # Check finding correlation references
+        correlation_ids = {c.get("id") for c in correlations if c.get("id")}
         for finding in findings:
             correlation_refs = finding.get("correlation_refs", [])
             for ref in correlation_refs:
-                correlation_ids = {c.get("id") for c in correlations if c.get("id")}
                 if ref not in correlation_ids:
                     issues.append(self._log_issue(f"Finding {finding.get('id')} references non-existent correlation '{ref}'"))
 

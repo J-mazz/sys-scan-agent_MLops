@@ -1,25 +1,25 @@
 # Sys-Scan Embedded Agent MLOps
 
-A proprietary ML pipeline for training specialized security analyst models using synthetic data generation and TPU-accelerated fine-tuning.
+ML pipeline for training specialized security analyst models using synthetic data generation and fine-tuning.
 
 ## 🚀 Overview
 
 This repository provides an end-to-end solution for:
 
 - **Synthetic Data Generation**: Generate realistic security scan findings for model training
-- **TPU Fine-Tuning Pipeline**: Fine-tune Mistral-7B models with LoRA adapters on Google Colab TPUs using nightly Hugging Face libraries
+- **Fine-Tuning Pipeline**: Fine-tune Qwen3-VL models with LoRA adapters on NVIDIA GPUs using Unsloth
 - **Embedded Inference**: Deploy optimized models for local security analysis in air-gapped environments
 
 ## Current Strategy
 
-The pipeline uses advanced techniques for efficient model training:
+The pipeline uses modern techniques for efficient model training:
 
-- **Model**: Mistral-7B-Instruct base model
-- **Fine-Tuning**: LoRA (Low-Rank Adaptation) for parameter-efficient training
-- **Hardware**: Google Colab TPU v2/v3 with FSDP v2 sharding
-- **Libraries**: Nightly builds of Hugging Face Transformers, Datasets, TRL, PEFT, Optimum-TPU
-- **Optimizer**: Lion (32-bit) for memory-efficient convergence
-- **Data**: Synthetic security scan data formatted for instruction tuning
+- **Model**: Qwen3-VL-4B-Thinking (Vision-Language Model)
+- **Fine-Tuning**: SFT (Supervised Fine-Tuning) + GRPO (Reinforcement Learning)
+- **Hardware**: NVIDIA GPUs (A100, L4, T4)
+- **Libraries**: Unsloth (Dynamic 2.0), vLLM, TRL, PEFT
+- **Optimizer**: AdamW (8-bit) for memory-efficient convergence
+- **Data**: Synthetic security scan data formatted for instruction tuning with reasoning traces (`<think>` blocks)
 
 ## 📝 License
 

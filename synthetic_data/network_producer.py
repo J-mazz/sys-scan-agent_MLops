@@ -1,22 +1,80 @@
-"""
-Network scanner producer for generating synthetic network-related findings.
-"""
+"""Network scanner producer for generating synthetic network-related findings."""
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 import random
 import uuid
-from base_producer import BaseProducer
+
+from .base_producer import BaseProducer
+
 
 class NetworkProducer(BaseProducer):
     """Producer for synthetic network scanner findings."""
 
     def __init__(self):
         super().__init__("network")
-        self.common_ports = [22, 80, 443, 3306, 5432, 6379, 27017]
-        self.suspicious_ports = [4444, 1337, 6667, 31337, 12345, 54321]
-        self.protocols = ['tcp', 'udp', 'tcp6', 'udp6']
+        self.common_ports = [
+            22,
+            80,
+            443,
+            3306,
+            5432,
+            6379,
+            27017,
+            25,
+            110,
+            143,
+            993,
+            995,
+            8080,
+            8443,
+            9200,
+            11211,
+        ]
+        self.suspicious_ports = [4444, 1337, 6667, 31337, 12345, 54321, 3389, 8088, 9001, 9050, 2222, 50050]
+        self.protocols = ["tcp", "udp", "tcp6", "udp6"]
+        self.common_services = [
+            (80, "http", "nginx"),
+            (443, "https", "envoy"),
+            (22, "ssh", "openssh"),
+            (3306, "mysql", "mysqld"),
+            (5432, "postgres", "postgres"),
+            (6379, "redis", "redis-server"),
+            (27017, "mongodb", "mongod"),
+            (9200, "elasticsearch", "java"),
+            (11211, "memcached", "memcached"),
+            (25, "smtp", "postfix"),
+            (8080, "http-alt", "jetty"),
+            (8443, "https-alt", "tomcat"),
+        ]
+        self.c2_hosts = [
+            "198.51.100.{octet}",
+            "203.0.113.{octet}",
+            "45.67.230.{octet}",
+            "77.247.110.{octet}",
+            "185.220.101.{octet}",
+            "darknode{n}.onion",
+            "c2-drop.{n}.evilcdn.net",
+        ]
+        self.exfil_hosts = [
+            "s3-malicious-{n}.s3.amazonaws.com",
+            "gdrive-{n}.badshare.com",
+            "pastebin.com/raw/{n}",
+            "transfer.sh/{n}",
+            "ipfs.io/ipfs/{n}",
+        ]
+        self.ja3_fingerprints = [
+            "769,4865-4866-4867-49195-49196-52393-52392,0-23-65281,29-23-24,0",
+            "771,4865-4866-4867-49195,0-10-11,23-65281,29-23-24,0",
+        ]
+        self.sni_hosts = [
+            "api.internal",
+            "k8s.cluster.local",
+            "vault.service",
+            "update.windows.com",
+            "telemetry.apple.com",
+        ]
 
-    def generate_findings(self, count: int = 10) -> List[Dict[str, Any]]:
+    def generate_findings(self, count: int = 500) -> List[Dict[str, Any]]:
         """Generate synthetic network findings."""
         findings = []
 
@@ -30,13 +88,13 @@ class NetworkProducer(BaseProducer):
     def _generate_network_finding(self, scenario: str, index: int) -> Dict[str, Any]:
         """Generate a single network finding based on scenario."""
 
-        if scenario == 'normal':
+        if scenario == "normal":
             return self._generate_normal_network(index)
-        elif scenario == 'suspicious':
+        elif scenario == "suspicious":
             return self._generate_suspicious_network(index)
-        elif scenario == 'malicious':
+        elif scenario == "malicious":
             return self._generate_malicious_network(index)
-        elif scenario == 'edge_case':
+        elif scenario == "edge_case":
             return self._generate_edge_case_network(index)
         else:
             return self._generate_normal_network(index)
@@ -44,8 +102,8 @@ class NetworkProducer(BaseProducer):
     def _generate_normal_network(self, index: int) -> Dict[str, Any]:
         """Generate a normal network finding."""
         port = random.choice(self.common_ports)
-        protocol = random.choice(['tcp', 'tcp6'])
-        state = random.choice(['LISTEN', 'ESTABLISHED'])
+        protocol = random.choice(["tcp", "tcp6"])
+        state = random.choice(["LISTEN", "ESTABLISHED"])
 
         return self._generate_base_finding(
             finding_id=f"net_normal_{port}_{index}",
@@ -58,8 +116,10 @@ class NetworkProducer(BaseProducer):
                 "port": port,
                 "protocol": protocol,
                 "state": state,
-                "local_address": f"0.0.0.0:{port}" if protocol in ['tcp', 'udp'] else f"[::]:{port}",
-                "foreign_address": "0.0.0.0:0" if state == 'LISTEN' else f"192.168.1.{random.randint(1,254)}:{random.randint(1024,65535)}",
+                "local_address": f"0.0.0.0:{port}" if protocol in ["tcp", "udp"] else f"[::]:{port}",
+                "foreign_address": "0.0.0.0:0"
+                if state == "LISTEN"
+                else f"192.168.1.{random.randint(1,254)}:{random.randint(1024,65535)}",
                 "inode": random.randint(10000, 99999)
             }
         )
@@ -83,14 +143,21 @@ class NetworkProducer(BaseProducer):
                 "local_address": f"0.0.0.0:{port}",
                 "foreign_address": "0.0.0.0:0",
                 "inode": random.randint(100000, 999999),
-                "process": f"/usr/bin/nc -l {port}" if random.random() < 0.5 else None
+                "process": f"/usr/bin/nc -l {port}" if random.random() < 0.5 else None,
+                "c2_host": random.choice(self.c2_hosts).format(
+                    octet=random.randint(10, 250), n=random.randint(1, 9999)
+                ),
+                "ja3": random.choice(self.ja3_fingerprints),
+                "sni": random.choice(self.sni_hosts),
+                "asn": random.choice([9009, 16276, 202425, 14061, 60111]),
+                "geo": random.choice(["RU", "CN", "IR", "BR", "US"]),
             }
         )
 
     def _generate_malicious_network(self, index: int) -> Dict[str, Any]:
         """Generate a malicious network finding."""
         port = random.randint(1, 65535)
-        protocol = 'tcp'
+        protocol = "tcp"
 
         return self._generate_base_finding(
             finding_id=f"net_mal_{port}_{index}",
@@ -108,7 +175,15 @@ class NetworkProducer(BaseProducer):
                 "inode": random.randint(1000000, 9999999),
                 "process": "/tmp/.backdoor",
                 "malicious_ip": True,
-                "c2_indicator": True
+                "c2_indicator": True,
+                "c2_host": random.choice(self.c2_hosts).format(
+                    octet=random.randint(10, 250), n=random.randint(1, 9999)
+                ),
+                "exfil_destination": random.choice(self.exfil_hosts).format(n=uuid.uuid4().hex[:12]),
+                "ja3": random.choice(self.ja3_fingerprints),
+                "sni": random.choice(self.sni_hosts),
+                "asn": random.choice([49505, 21335, 9009, 16276, 20473]),
+                "geo": random.choice(["RU", "CN", "IR", "UA", "US"]),
             }
         )
 
@@ -135,6 +210,8 @@ class NetworkProducer(BaseProducer):
                 "state": edge_case.get("state", "LISTEN"),
                 "local_address": f"127.0.0.1:{edge_case.get('port', 0)}",
                 "foreign_address": "0.0.0.0:0",
-                "inode": 0 if edge_case.get("port") == 0 else random.randint(10000, 99999)
+                "inode": 0 if edge_case.get("port") == 0 else random.randint(10000, 99999),
+                "asn": random.choice([0, 13335, 16509, 32934]),
+                "geo": random.choice(["--", "US", "DE", "SG"]),
             }
         )

@@ -34,9 +34,18 @@ class BaseCorrelationProducer:
         risk_score: int,
         related_findings: List[str],
         correlation_type: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        host_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Create a standardized correlation finding."""
+        """Create a standardized correlation finding with host context and rationale."""
+
+        meta = metadata or {}
+        host_meta = host_context or {}
+        kb_refs = meta.get("kb_refs") or self._default_kb_refs(correlation_type)
+        rationale = meta.get("rationale") or f"Correlation analysis by {self.name} producer"
+
+        merged_meta = {**meta, **host_meta, "kb_refs": kb_refs}
+
         return {
             "id": f"{self.correlation_id}_{uuid.uuid4().hex[:8]}",
             "title": title,
@@ -44,7 +53,7 @@ class BaseCorrelationProducer:
             "risk_score": risk_score,
             "base_severity_score": risk_score,
             "description": description,
-            "metadata": metadata or {},
+            "metadata": merged_meta,
             "operational_error": False,
             "category": "correlation",
             "tags": ["correlation", correlation_type, self.name],
@@ -61,7 +70,7 @@ class BaseCorrelationProducer:
             "probability_actionable": random.uniform(0.3, 0.9),
             "graph_degree": len(related_findings),
             "cluster_id": self.correlation_id,
-            "rationale": f"Correlation analysis by {self.name} producer",
+            "rationale": rationale,
             "risk_total": risk_score,
             "host_role": None,
             "host_role_rationale": None,
@@ -70,6 +79,10 @@ class BaseCorrelationProducer:
             "correlation_strength": self._calculate_correlation_strength(related_findings),
             "timestamp": datetime.now().isoformat()
         }
+
+    def _default_kb_refs(self, correlation_type: str) -> List[str]:
+        kb = ["Correlation KB: cross-signal consistency", f"Type: {correlation_type}"]
+        return kb
 
     def _calculate_correlation_strength(self, related_findings: List[str]) -> float:
         """Calculate the strength of a correlation based on number of related findings."""

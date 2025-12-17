@@ -11,8 +11,8 @@ from pathlib import Path
 # Add the synthetic_data directory to the path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from synthetic_data_pipeline import SyntheticDataPipeline
-from langchain_correlation_producer import get_langchain_bridge_runtime
+from synthetic_data.synthetic_data_pipeline import SyntheticDataPipeline
+from synthetic_data.langchain_correlation_producer import get_langchain_bridge_runtime
 
 def test_complete_pipeline():
     """Test the complete synthetic data pipeline."""
@@ -40,49 +40,44 @@ def test_complete_pipeline():
         "endpoint_behavior": 2
     }
 
-    try:
-        print("Executing pipeline...")
-        result = pipeline.execute_pipeline(
-            producer_counts=producer_counts,
-            output_path="test_pipeline_output.json",
-            save_intermediate=True
-        )
+    print("Executing pipeline...")
+    result = pipeline.execute_pipeline(
+        producer_counts=producer_counts,
+        output_path="test_pipeline_output.json",
+        save_intermediate=True
+    )
 
-        print("\n✅ Pipeline execution successful!")
-        print(f"📊 Findings generated: {result['data_summary']['total_findings']}")
-        print(f"🔗 Correlations generated: {result['data_summary']['total_correlations']}")
-        print(f"✅ Verification status: {result['quality_metrics']['verification_status']}")
-        print(".2f")
-        print(".2f")
-        print(f"💾 Dataset size: {result['performance_metrics']['data_size_mb']} MB")
+    print("\n✅ Pipeline execution successful!")
+    print(f"📊 Findings generated: {result['data_summary']['total_findings']}")
+    print(f"🔗 Correlations generated: {result['data_summary']['total_correlations']}")
+    print(f"✅ Verification status: {result['quality_metrics']['verification_status']}")
+    print(".2f")
+    print(".2f")
+    print(f"💾 Dataset size: {result['performance_metrics']['data_size_mb']} MB")
 
-        # Validate output file
-        if os.path.exists("test_pipeline_output.json"):
-            with open("test_pipeline_output.json", 'r') as f:
-                dataset = json.load(f)
+    assert result["quality_metrics"]["verification_status"] in {"passed", "warning", "failed"}
+    assert result["data_summary"]["total_findings"] >= 0
+    assert result["data_summary"]["total_correlations"] >= 0
 
-            print("\n📁 Output file validation:")
-            print(f"  - Dataset version: {dataset.get('metadata', {}).get('version', 'unknown')}")
-            print(f"  - Total findings: {dataset.get('data', {}).get('statistics', {}).get('total_findings', 0)}")
-            print(f"  - Total correlations: {dataset.get('data', {}).get('statistics', {}).get('total_correlations', 0)}")
+    # Validate output file
+    if os.path.exists("test_pipeline_output.json"):
+        with open("test_pipeline_output.json", 'r') as f:
+            dataset = json.load(f)
 
-            # Check intermediate files
-            intermediate_dir = Path("intermediate_results")
-            if intermediate_dir.exists():
-                intermediate_files = list(intermediate_dir.glob("*.json"))
-                print(f"  - Intermediate files: {len(intermediate_files)}")
-                for f in intermediate_files:
-                    print(f"    * {f.name}")
+        print("\n📁 Output file validation:")
+        print(f"  - Dataset version: {dataset.get('metadata', {}).get('version', 'unknown')}")
+        print(f"  - Total findings: {dataset.get('data', {}).get('statistics', {}).get('total_findings', 0)}")
+        print(f"  - Total correlations: {dataset.get('data', {}).get('statistics', {}).get('total_correlations', 0)}")
 
-        print("\n🎉 All tests passed!")
+        # Check intermediate files
+        intermediate_dir = Path("intermediate_results")
+        if intermediate_dir.exists():
+            intermediate_files = list(intermediate_dir.glob("*.json"))
+            print(f"  - Intermediate files: {len(intermediate_files)}")
+            for f in intermediate_files:
+                print(f"    * {f.name}")
 
-    except Exception as e:
-        print(f"\n❌ Pipeline test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-    return True
+    print("\n🎉 All tests passed!")
 
 def test_pipeline_components():
     """Test individual pipeline components."""

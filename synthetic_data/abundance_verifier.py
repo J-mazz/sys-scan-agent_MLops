@@ -4,7 +4,7 @@ Abundance verifier to prevent over-generation of similar findings.
 
 from typing import Dict, List, Any, Tuple
 from collections import Counter
-from base_verifier import BaseVerifier
+from .base_verifier import BaseVerifier
 
 class AbundanceVerifier(BaseVerifier):
     """Verifier to prevent over-abundance of similar findings."""
@@ -38,6 +38,10 @@ class AbundanceVerifier(BaseVerifier):
         # Check severity distribution balance
         severity_issues = self._verify_severity_balance(findings, total_findings)
         issues.extend(severity_issues)
+
+        # Check host diversity so one host profile doesn't dominate
+        host_issues = self._verify_host_diversity(findings, total_findings)
+        issues.extend(host_issues)
 
         return len(issues) == 0, issues
 
@@ -112,5 +116,34 @@ class AbundanceVerifier(BaseVerifier):
         info_count = severity_counts.get("info", 0)
         if info_count < total * 0.3:  # Less than 30% info
             issues.append(self._log_issue(f"Too few info findings: {info_count} ({info_count/total:.1%}) - should be at least 30%"))
+
+        return issues
+
+    def _verify_host_diversity(self, findings: List[Dict[str, Any]], total: int) -> List[str]:
+        """Ensure host profiles (distro/version) are not overly concentrated."""
+        issues = []
+        host_pairs = []
+        for i, finding in enumerate(findings):
+            metadata = finding.get("metadata", {}) or {}
+            issues.extend(self._validate_host_metadata(metadata, f"Finding {i}"))
+            distro = metadata.get("distro")
+            version = metadata.get("distro_version")
+            if distro:
+                host_pairs.append((distro, version))
+
+        if not host_pairs:
+            return issues
+
+        # Check dominance of a single host profile
+        from collections import Counter
+
+        host_counts = Counter(host_pairs)
+        most_common, count = host_counts.most_common(1)[0]
+        if count / len(host_pairs) > self.max_category_percentage:
+            issues.append(
+                self._log_issue(
+                    f"Host profile {most_common} dominates: {count/len(host_pairs):.1%} of findings (max {self.max_category_percentage:.1%})"
+                )
+            )
 
         return issues

@@ -3,9 +3,9 @@ Performance test for parallel vs sequential processing.
 """
 
 import time
-from producer_registry import registry
-from correlation_registry import correlation_registry
-from parallel_processor import get_parallel_processor
+from synthetic_data.producer_registry import registry
+from synthetic_data.correlation_registry import correlation_registry
+from synthetic_data.parallel_processor import get_parallel_processor
 
 def test_parallel_performance():
     """Test performance difference between parallel and sequential processing."""

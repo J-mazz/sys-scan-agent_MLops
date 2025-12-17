@@ -8,18 +8,18 @@ The synthetic data generation system consists of:
 
 - **Producer Agents**: Generate realistic findings for different scanner types
 - **Verifier Agents**: Validate data quality and prevent over-generation
-- **Generator Orchestrator**: Coordinates producers and verifiers
+ - **SyntheticDataPipeline Orchestrator**: Coordinates producers, correlations, and advanced verification
 - **Ground Truth Schema**: Defines the structure of generated data
-- **TPU Fine-Tuning**: Colab notebook for training Mistral-7B with LoRA on TPUs
+- **GPU Fine-Tuning**: Notebook for training Qwen3-VL with Unsloth on NVIDIA GPUs
 
 ## Training Pipeline
 
-The `colab_fullstack_tpu.ipynb` notebook implements the complete TPU-accelerated fine-tuning pipeline:
+The `notebooks/finetune_qwen3_security_agent.ipynb` notebook implements the complete GPU-accelerated fine-tuning pipeline:
 
-- **Model**: Mistral-7B-Instruct with LoRA adapters
-- **Hardware**: Google Colab TPU with FSDP v2 sharding
-- **Libraries**: Nightly Hugging Face (Transformers, TRL, PEFT, Optimum-TPU)
-- **Data Format**: Instruction-response pairs from synthetic security findings
+- **Model**: Qwen3-VL-2B-Thinking with LoRA adapters
+- **Hardware**: NVIDIA GPUs (A100, L4, T4)
+- **Libraries**: Unsloth, vLLM, TRL
+- **Data Format**: Instruction-response pairs with reasoning traces (`<think>` blocks)
 - **Output**: Trained LoRA adapter for embedded inference
 
 ## Architecture
@@ -278,12 +278,13 @@ max_iterations = 5
 
 ## Integration
 
-The synthetic data generator integrates with the existing sys-scan-graph agent framework:
+The `SyntheticDataPipeline` integrates with the existing sys-scan-graph agent framework:
 
-1. **Data Generation**: Produces realistic training data
-2. **Quality Assurance**: Verifies data meets quality standards
-3. **Model Training**: Provides diverse, realistic datasets
-4. **Local Inference**: Supports fine-tuning for local model deployment
+1. **Data Generation**: Producers emit enriched findings with host context and KB refs
+2. **Correlation**: Correlation producers add cross-signal links with host context and rationale
+3. **Quality Assurance**: Advanced verifiers enforce schema, coherence, realism, and abundance
+4. **Model Training**: Provides diverse, realistic datasets for fine-tuning
+5. **Local Inference**: Supports downstream local model deployment
 
 ## Parallel Processing
 

@@ -4,7 +4,7 @@ Kernel correlation producer for analyzing relationships between kernel parameter
 
 from typing import Dict, List, Any
 import random
-from base_correlation_producer import BaseCorrelationProducer
+from .base_correlation_producer import BaseCorrelationProducer
 
 class KernelCorrelationProducer(BaseCorrelationProducer):
     """Analyzes correlations between kernel parameters, modules, and other scanner results."""
@@ -185,8 +185,9 @@ class KernelCorrelationProducer(BaseCorrelationProducer):
                 "category": category,
                 "weak_parameters_count": len(weak_params),
                 "parameter_names": param_names,
-                "correlation_reason": "multiple_weak_security_settings"
-            }
+                "correlation_reason": "multiple_weak_security_settings",
+            },
+            host_context=self._host_context(weak_params[0] if weak_params else {}),
         )
 
     def _create_module_kernel_correlation(
@@ -208,8 +209,9 @@ class KernelCorrelationProducer(BaseCorrelationProducer):
                 "security_modules_count": len(security_modules),
                 "module_names": module_names,
                 "related_parameters_count": len(param_ids),
-                "correlation_reason": "security_module_kernel_interaction"
-            }
+                "correlation_reason": "security_module_kernel_interaction",
+            },
+            host_context=self._host_context(security_modules[0] if security_modules else {}),
         )
 
     def _create_kernel_mac_correlation(
@@ -232,8 +234,9 @@ class KernelCorrelationProducer(BaseCorrelationProducer):
                 "mac_parameters_count": len(mac_params),
                 "parameter_names": param_names,
                 "mac_status": mac_status,
-                "correlation_reason": "mac_parameters_without_mac_system"
-            }
+                "correlation_reason": "mac_parameters_without_mac_system",
+            },
+            host_context=self._host_context(mac_params[0] if mac_params else {}),
         )
 
     def _create_kernel_process_correlation(
@@ -257,6 +260,16 @@ class KernelCorrelationProducer(BaseCorrelationProducer):
                 "parameter_names": param_names,
                 "suspicious_processes_count": len(suspicious_processes),
                 "process_names": process_names,
-                "correlation_reason": "kernel_process_controls_suspicious_activity"
-            }
+                "correlation_reason": "kernel_process_controls_suspicious_activity",
+            },
+            host_context=self._host_context(process_params[0] if process_params else {}),
         )
+
+    def _host_context(self, finding: Dict[str, Any]) -> Dict[str, Any]:
+        meta = finding.get("metadata", {}) or {}
+        return {
+            "distro": meta.get("distro"),
+            "distro_version": meta.get("distro_version"),
+            "package_manager": meta.get("package_manager"),
+            "kernel": meta.get("kernel") or meta.get("kernel_version"),
+        }

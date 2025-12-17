@@ -4,7 +4,7 @@ Realism verifier to ensure synthetic data looks like real scanner output.
 
 from typing import Dict, List, Any, Tuple
 import random
-from base_verifier import BaseVerifier
+from .base_verifier import BaseVerifier
 
 class RealismVerifier(BaseVerifier):
     """Verifier for realism of synthetic data."""
@@ -142,6 +142,21 @@ class RealismVerifier(BaseVerifier):
     def _verify_metadata_realism(self, findings: List[Dict[str, Any]]) -> List[str]:
         """Verify overall metadata realism."""
         issues = []
+
+        # Host context sanity
+        distros = []
+        for i, finding in enumerate(findings):
+            metadata = finding.get("metadata", {}) or {}
+            host_issues = self._validate_host_metadata(metadata, f"Finding {i}")
+            issues.extend(host_issues)
+            if metadata.get("distro"):
+                distros.append(metadata.get("distro"))
+
+        if distros:
+            most_common = max(set(distros), key=distros.count)
+            frequency = distros.count(most_common) / len(distros)
+            if frequency > 0.85:
+                issues.append(self._log_issue(f"Host distro diversity low: {most_common} appears {frequency:.1%} of findings"))
 
         # Check for too many identical metadata values
         metadata_fields = ["command", "port", "protocol", "user"]

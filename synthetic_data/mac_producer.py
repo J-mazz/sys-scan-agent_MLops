@@ -5,13 +5,20 @@ MAC (Mandatory Access Control) producer for generating synthetic MAC status find
 from typing import Dict, List, Any
 import random
 import uuid
-from base_producer import BaseProducer
+from .base_producer import BaseProducer
 
 class MacProducer(BaseProducer):
     """Producer for synthetic MAC status scanner findings."""
 
     def __init__(self):
         super().__init__("mac")
+        self.distro_profiles = [
+            {"name": "Debian", "versions": ["11", "12"], "pkg": "apt", "weight": 0.24},
+            {"name": "Ubuntu", "versions": ["20.04", "22.04", "24.04"], "pkg": "apt", "weight": 0.28},
+            {"name": "Fedora", "versions": ["38", "39", "40"], "pkg": "dnf", "weight": 0.2},
+            {"name": "Arch", "versions": ["rolling"], "pkg": "pacman", "weight": 0.14},
+            {"name": "Alpine", "versions": ["3.18", "3.19", "3.20"], "pkg": "apk", "weight": 0.14},
+        ]
 
     def _generate_apparmor_finding(self) -> Dict[str, Any]:
         """Generate an AppArmor status finding."""
@@ -36,7 +43,8 @@ class MacProducer(BaseProducer):
                 "enabled": "true" if enabled else "false",
                 "mode_line": "Y" if enabled else "N",
                 "profiles_seen": str(profiles_seen),
-                "unconfined_critical": str(unconfined_critical)
+                "unconfined_critical": str(unconfined_critical),
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "mac",
@@ -78,7 +86,8 @@ class MacProducer(BaseProducer):
             "base_severity_score": risk_score,
             "description": "SELinux detection",
             "metadata": {
-                "present": "true" if present else "false"
+                "present": "true" if present else "false",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "mac",
@@ -121,7 +130,8 @@ class MacProducer(BaseProducer):
             "description": "grsecurity detection",
             "metadata": {
                 "present": "true" if present else "false",
-                "enabled": "true" if enabled else "false"
+                "enabled": "true" if enabled else "false",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "mac",
@@ -164,7 +174,8 @@ class MacProducer(BaseProducer):
             "description": "TOMOYO Linux detection",
             "metadata": {
                 "present": "true" if present else "false",
-                "enabled": "true" if enabled else "false"
+                "enabled": "true" if enabled else "false",
+                **self._sample_distro_profile(),
             },
             "operational_error": False,
             "category": "mac",
@@ -210,3 +221,21 @@ class MacProducer(BaseProducer):
             findings.append(finding)
 
         return findings
+
+    def _sample_distro_profile(self) -> Dict[str, Any]:
+        weights = [p["weight"] for p in self.distro_profiles]
+        profile = random.choices(self.distro_profiles, weights=weights, k=1)[0]
+        version = random.choice(profile["versions"])
+        kernel_minor = random.randint(1, 12)
+        kernel_patch = random.randint(1, 30)
+        # MAC context hints based on distro
+        apparmor = profile["name"] in {"Ubuntu", "Debian"}
+        selinux = profile["name"] in {"Fedora"}
+        return {
+            "distro": profile["name"],
+            "distro_version": version,
+            "package_manager": profile["pkg"],
+            "kernel": f"6.{kernel_minor}.{kernel_patch}-{profile['name'].lower()}",
+            "apparmor_expected": str(apparmor).lower(),
+            "selinux_expected": str(selinux).lower(),
+        }

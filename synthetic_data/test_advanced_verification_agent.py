@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from advanced_verification_agent import AdvancedVerificationAgent
+from synthetic_data.advanced_verification_agent import AdvancedVerificationAgent
 
 
 @pytest.fixture
