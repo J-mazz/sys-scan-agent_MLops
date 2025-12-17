@@ -109,8 +109,8 @@ celerybeat.pid
 .env
 .venv
 .venv3.12
-.venv3.12/
-.venv3.14t/
+.venv-3.12/
+.venv-3.14/
 env/
 venv/
 ENV/
