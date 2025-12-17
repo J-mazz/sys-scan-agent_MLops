@@ -108,11 +108,15 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv3.12/
+.venv3.14t/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+helpers/__pycache__/
+__pycache__/
 
 # Spyder project settings
 .spyderproject
@@ -179,12 +183,13 @@ temp/
 tmp/
 
 # Data files (uncomment if you want to ignore generated data)
-# massive_datasets/
-# massive_datasets_max/
-# data/
-# synthetic_data/intermediate_results/
-# synthetic_data/massive_datasets/
-# synthetic_data/massive_datasets_max/
+massive_datasets/
+massive_datasets_max/
+data/
+synthetic_data/intermediate_results/
+synthetic_data/massive_datasets/
+synthetic_data/massive_datasets_max/
+datasets/
 
 # TensorFlow/Keras
 *.pb
