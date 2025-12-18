@@ -788,7 +788,7 @@ def run_synthetic_data_pipeline(
         max_iterations=3
     )
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - example usage
     # Example usage (production-leaning defaults)
     example_logger = logging.getLogger("synthetic_data.pipeline.example")
     example_logger.info("Running synthetic data pipeline...")

@@ -24,7 +24,7 @@ try:
     from .parallel_processor import process_producers_parallel, get_parallel_processor
     PARALLEL_AVAILABLE = True
     logger.info("Parallel processing module imported successfully")
-except ImportError as e:
+except ImportError as e:  # pragma: no cover - optional dependency fallback
     PARALLEL_AVAILABLE = False
     logger.warning("Parallel processing import failed: %s", e)
 
