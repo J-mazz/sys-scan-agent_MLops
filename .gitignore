@@ -191,7 +191,9 @@ synthetic_data/intermediate_results/
 synthetic_data/massive_datasets/
 synthetic_data/massive_datasets_max/
 datasets/
-
+*.jsonl
+*_dataset.json
+*_batch.json
 # TensorFlow/Keras
 *.pb
 *.ckpt

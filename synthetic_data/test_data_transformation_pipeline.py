@@ -104,7 +104,7 @@ def verification_report() -> Dict[str, object]:
 
 
 def test_transform_dataset_without_langchain(sample_findings, sample_correlations, verification_report):
-    pipeline = DataTransformationPipeline(use_langchain=False, fast_mode=False)
+    pipeline = DataTransformationPipeline(fast_mode=False)
 
     transformed = pipeline.transform_dataset(
         findings=sample_findings,
@@ -143,7 +143,7 @@ def test_transform_dataset_without_langchain(sample_findings, sample_correlation
 
 
 def test_transform_dataset_with_compression(sample_findings, sample_correlations, verification_report):
-    pipeline = DataTransformationPipeline(use_langchain=False)
+    pipeline = DataTransformationPipeline()
 
     compressed = pipeline.transform_dataset(
         findings=sample_findings,
@@ -165,7 +165,7 @@ def test_transform_dataset_with_compression(sample_findings, sample_correlations
 
 
 def test_save_dataset_writes_json(tmp_path, sample_findings, sample_correlations, verification_report):
-    pipeline = DataTransformationPipeline(use_langchain=False)
+    pipeline = DataTransformationPipeline()
     dataset = pipeline.transform_dataset(
         findings=sample_findings,
         correlations=sample_correlations,
@@ -183,7 +183,7 @@ def test_save_dataset_writes_json(tmp_path, sample_findings, sample_correlations
 
 
 def test_save_dataset_handles_binary_payload(tmp_path):
-    pipeline = DataTransformationPipeline(use_langchain=False)
+    pipeline = DataTransformationPipeline()
     binary_dataset = {"data": b"\x00\x01", "compressed": True}
 
     output = tmp_path / "binary.dat"
@@ -193,7 +193,7 @@ def test_save_dataset_handles_binary_payload(tmp_path):
 
 
 def test_normalization_adds_defaults_and_handles_invalid_types():
-    pipeline = DataTransformationPipeline(use_langchain=False)
+    pipeline = DataTransformationPipeline()
 
     raw_item = {
         "description": "   Mixed CASE title   ",

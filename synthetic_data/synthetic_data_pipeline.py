@@ -14,6 +14,8 @@ import warnings
 import random
 import asyncio
 
+DEFAULT_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
 from .producer_registry import registry
 from .base_producer import AggregatingProducer
 from .correlation_registry import correlation_registry
@@ -114,7 +116,6 @@ class SyntheticDataPipeline:
 
     def __init__(
         self,
-        use_langchain: bool = True,
         conservative_parallel: bool = False,
         gpu_optimized: Optional[bool] = None,
         fast_mode: bool = False,
@@ -125,7 +126,6 @@ class SyntheticDataPipeline:
         Initialize the synthetic data pipeline.
 
         Args:
-            use_langchain: Whether to use LangChain for data enrichment
             conservative_parallel: Whether to use conservative parallel processing
             gpu_optimized: Whether to use GPU-optimized parallel processing (auto-detect if None)
             fast_mode: Whether to use fast mode (skip heavy enrichment for massive datasets)
@@ -135,12 +135,6 @@ class SyntheticDataPipeline:
         self.logger = logging.getLogger("synthetic_data.pipeline")
         self.logger.setLevel(logging.INFO)
 
-        # Allow environment override to force-enable LangChain even if a caller passes False
-        force_langchain_env = os.getenv("SYNTHETIC_FORCE_LANGCHAIN")
-        if force_langchain_env is not None:
-            self.use_langchain = force_langchain_env.strip().lower() in {"1", "true", "yes", "on"}
-        else:
-            self.use_langchain = use_langchain
         self.conservative_parallel = conservative_parallel
         self.gpu_optimized = gpu_optimized
         self.fast_mode = fast_mode
@@ -173,8 +167,7 @@ class SyntheticDataPipeline:
                 self.max_workers = max(2, min(6, cpu_count - 2))
 
         self.logger.info(
-            "Initializing pipeline: use_langchain=%s, conservative_parallel=%s, max_workers=%s",
-            use_langchain,
+            "Initializing pipeline: conservative_parallel=%s, max_workers=%s",
             conservative_parallel,
             self.max_workers,
         )
@@ -182,27 +175,8 @@ class SyntheticDataPipeline:
         self.producer_registry = registry
         self.correlation_registry = correlation_registry
         self.dedup_agent = DeduplicationAgent()
-        self.correlation_registry.enable_langchain(self.use_langchain)
-        if self.use_langchain:  # pragma: no cover - optional LangChain runtime
-            try:
-                langchain_producer = self.correlation_registry.get_correlation_producer("langchain")
-            except ValueError:
-                self.logger.warning(
-                    "LangChain correlations requested but runtime unavailable. Falling back to deterministic correlations."
-                )
-            else:
-                mode = getattr(langchain_producer, "mode", "native")
-                if mode == "bridge":
-                    self.logger.info(
-                        "LangChain correlations will execute via external Python runtime: %s",
-                        getattr(langchain_producer, "external_python", "python3.12"),
-                    )
-                elif mode == "native":  # pragma: no cover - depends on external runtime
-                    self.logger.info("LangChain correlations executing natively in current interpreter")
-                else:
-                    self.logger.warning("LangChain correlations disabled; using fallback logic only")
         self.verification_agent = AdvancedVerificationAgent()
-        self.transformation_pipeline = DataTransformationPipeline(use_langchain=use_langchain, fast_mode=fast_mode)
+        self.transformation_pipeline = DataTransformationPipeline(fast_mode=fast_mode)
 
         # Pipeline execution state
         self.execution_state = {
@@ -257,7 +231,6 @@ class SyntheticDataPipeline:
 
             # Stage 2: Generate correlations (done once, based on findings)
             self.logger.info("🔗 Stage 2: Analyzing Correlations")
-            self.correlation_registry.enable_langchain(self.use_langchain)
             correlations = self._time_stage("correlation_analysis", self._execute_correlation_analysis, findings)
             self.execution_state["correlations_generated"] = len(correlations)
 
@@ -360,7 +333,6 @@ class SyntheticDataPipeline:
 
             # Stage 2: Correlations
             self.logger.info("🔗 Stage 2: Analyzing Correlations (async)")
-            self.correlation_registry.enable_langchain(self.use_langchain)
             correlations = await asyncio.to_thread(self._execute_correlation_analysis, findings)
             self.execution_state["correlations_generated"] = len(correlations)
 
@@ -784,10 +756,10 @@ class SyntheticDataPipeline:
 def run_synthetic_data_pipeline(
     output_path: str = "synthetic_security_dataset.json",
     producer_counts: Optional[Dict[str, int]] = None,
-    use_langchain: bool = True,
     compress: bool = False,
     conservative_parallel: bool = True,
-    gpu_optimized: Optional[bool] = None
+    gpu_optimized: Optional[bool] = None,
+    max_workers: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to run the complete synthetic data pipeline.
@@ -795,7 +767,6 @@ def run_synthetic_data_pipeline(
     Args:
         output_path: Path to save the final dataset
         producer_counts: Number of findings per producer (default: 10 each)
-        use_langchain: Whether to use LangChain for enrichment
         compress: Whether to compress the output
         conservative_parallel: Whether to use conservative parallel processing
         gpu_optimized: Whether to use GPU-optimized parallel processing (auto-detect if None)
@@ -804,9 +775,9 @@ def run_synthetic_data_pipeline(
         Pipeline execution report
     """
     pipeline = SyntheticDataPipeline(
-        use_langchain=use_langchain,
-        conservative_parallel=False,
-        gpu_optimized=gpu_optimized
+        conservative_parallel=conservative_parallel,
+        gpu_optimized=gpu_optimized,
+        max_workers=max_workers,
     )
 
     return pipeline.execute_pipeline(
@@ -825,8 +796,9 @@ if __name__ == "__main__":
     result = run_synthetic_data_pipeline(
         output_path="synthetic_dataset_example.json",
         producer_counts=None,  # use density_mode="high" defaults per producer_registry
-        use_langchain=True,
-        compress=False
+        compress=False,
+        conservative_parallel=True,
+        max_workers=1,
     )
 
     example_logger.info("Pipeline completed!")

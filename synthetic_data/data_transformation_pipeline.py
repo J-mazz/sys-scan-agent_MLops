@@ -13,102 +13,15 @@ from collections import defaultdict
 import logging
 import os
 
-try:  # pragma: no cover - optional LangChain integration
-    from langchain_core.prompts import PromptTemplate
-    from langchain_core.output_parsers import JsonOutputParser
-    from langchain_core.runnables import RunnablePassthrough
-    from langchain_openai import ChatOpenAI
-    LANGCHAIN_AVAILABLE = True
-except ImportError:  # pragma: no cover - optional LangChain integration
-    # Handle case where langchain packages are not available
-    LANGCHAIN_AVAILABLE = False
-    logging.getLogger(__name__).warning(
-        "LangChain integrations not installed. Install 'langchain' and 'langchain-openai' to enable enrichment."
-    )
-
-
 logger = logging.getLogger(__name__)
 
 class DataTransformationPipeline:
     """Pipeline for transforming and optimizing synthetic security data."""
 
-    def __init__(self, use_langchain: bool = True, fast_mode: bool = False):
-        self.use_langchain = use_langchain and LANGCHAIN_AVAILABLE and not fast_mode
-
+    def __init__(self, fast_mode: bool = False):
         if fast_mode:
-            logger.info("Using FAST MODE: Skipping LangChain enrichment for maximum speed")
-            self.use_langchain = False
-        elif self.use_langchain and not os.environ.get("OPENAI_API_KEY"):
-            logger.warning(
-                "OPENAI_API_KEY not set. Falling back to deterministic enrichment while keeping LangChain optional."
-            )
-            self.use_langchain = False
-
-        if self.use_langchain:  # pragma: no cover - requires external LangChain runtime
-            self._setup_langchain_components()
-            logger.info("LangChain enrichment enabled for data transformation")
-        else:
-            if use_langchain and not LANGCHAIN_AVAILABLE:
-                logger.warning("LangChain packages unavailable. Proceeding without enrichment.")
-            logger.info("Using deterministic transformation without LangChain enrichment")
-
-    def _setup_langchain_components(self):  # pragma: no cover - requires LangChain runtime
-        """Set up LangChain components for data enrichment."""
-        if not LANGCHAIN_AVAILABLE:
-            return
-
-        def _model_candidates():
-            env_models = os.getenv("SYNTHETIC_LANGCHAIN_MODELS")
-            if env_models:
-                return [m.strip() for m in env_models.split(",") if m.strip()]
-            return ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1"]
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("OPENAI_API_BASE")
-        last_exc: Exception | None = None
-        self.llm = None
-        for candidate in _model_candidates():
-            try:
-                self.llm = ChatOpenAI(
-                    model=candidate,
-                    temperature=0.1,
-                    max_tokens=500,
-                    api_key=api_key,
-                    openai_api_key=api_key,
-                    base_url=base_url,
-                )
-                break
-            except Exception as exc:  # pragma: no cover - external
-                last_exc = exc
-                continue
-        if self.llm is None:
-            raise RuntimeError(f"Failed to initialize LangChain LLM for enrichment: {last_exc}")
-
-        # Create enrichment prompt
-        enrichment_prompt = PromptTemplate.from_template("""
-        Analyze the following security finding and provide enriched metadata:
-
-        Finding: {finding_title}
-        Description: {finding_description}
-        Severity: {finding_severity}
-        Category: {finding_category}
-
-        Provide a JSON response with:
-        - mitigation_steps: Array of specific remediation actions
-        - attack_vectors: Array of potential attack methods this finding could indicate
-        - compliance_impact: Array of compliance frameworks affected
-        - business_impact: Brief description of business impact
-        - technical_details: Additional technical context
-
-        Response format: JSON only
-        """)
-
-        self.enrichment_chain = (
-            RunnablePassthrough()
-            | enrichment_prompt
-            | self.llm
-            | JsonOutputParser()
-        )
+            logger.info("Using FAST MODE: Skipping enrichment for maximum speed")
+        logger.info("Using deterministic transformation (LangChain removed)")
 
     def transform_dataset(
         self,
@@ -137,13 +50,9 @@ class DataTransformationPipeline:
         normalized_findings = self._normalize_findings(findings)
         normalized_correlations = self._normalize_correlations(correlations)
 
-        # Step 2: Data enrichment (if LangChain available)
-        if self.use_langchain:
-            enriched_findings = self._enrich_findings_with_langchain(normalized_findings)
-            enriched_correlations = self._enrich_correlations_with_langchain(normalized_correlations)
-        else:
-            enriched_findings = normalized_findings
-            enriched_correlations = normalized_correlations
+        # Step 2: Data enrichment (legacy LangChain removed)
+        enriched_findings = normalized_findings
+        enriched_correlations = normalized_correlations
 
         # Step 3: Dataset optimization
         optimized_dataset = self._optimize_dataset_structure(
@@ -308,79 +217,7 @@ class DataTransformationPipeline:
 
         return round(score, 2)
 
-    def _enrich_findings_with_langchain(self, findings: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:  # pragma: no cover - requires LangChain runtime
-        """Enrich findings using LangChain for additional context."""
-        if not self.use_langchain:
-            return findings
-
-        enriched = {}
-
-        for scanner_type, scanner_findings in findings.items():
-            enriched[scanner_type] = []
-
-            for finding in scanner_findings:
-                try:
-                    # Use LangChain to enrich the finding
-                    enrichment_input = {
-                        "finding_title": finding.get("title", ""),
-                        "finding_description": finding.get("description", ""),
-                        "finding_severity": finding.get("severity", ""),
-                        "finding_category": finding.get("category", "")
-                    }
-
-                    enrichment_result = self.enrichment_chain.invoke(enrichment_input)
-
-                    # Merge enrichment data
-                    enriched_finding = finding.copy()
-                    enriched_finding["_langchain_enrichment"] = enrichment_result
-                    enriched_finding["_enrichment_timestamp"] = datetime.now().isoformat()
-
-                    enriched[scanner_type].append(enriched_finding)
-
-                except Exception as e:
-                    logger.warning("Failed to enrich finding %s: %s", finding.get('id'), e)
-                    # Add basic enrichment fallback
-                    enriched_finding = finding.copy()
-                    enriched_finding["_langchain_enrichment"] = {
-                        "error": "Enrichment failed",
-                        "fallback": True
-                    }
-                    enriched[scanner_type].append(enriched_finding)
-
-        return enriched
-
-    def _enrich_correlations_with_langchain(self, correlations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:  # pragma: no cover - requires LangChain runtime
-        """Enrich correlations using LangChain."""
-        if not self.use_langchain:
-            return correlations
-
-        enriched = []
-
-        for correlation in correlations:
-            try:
-                # Create enrichment prompt for correlations
-                enrichment_input = {
-                    "correlation_title": correlation.get("title", ""),
-                    "correlation_description": correlation.get("description", ""),
-                    "correlation_type": correlation.get("correlation_type", ""),
-                    "related_findings_count": len(correlation.get("correlation_refs", []))
-                }
-
-                # Use a simple enrichment for correlations
-                enriched_correlation = correlation.copy()
-                enriched_correlation["_correlation_analysis"] = {
-                    "relationship_strength": correlation.get("correlation_strength", 0.5),
-                    "analysis_timestamp": datetime.now().isoformat(),
-                    "enriched": True
-                }
-
-                enriched.append(enriched_correlation)
-
-            except Exception as e:
-                logger.warning("Failed to enrich correlation %s: %s", correlation.get('id'), e)
-                enriched.append(correlation)
-
-        return enriched
+    # Legacy LangChain enrichment removed
 
     def _optimize_dataset_structure(
         self,
@@ -531,7 +368,7 @@ class DataTransformationPipeline:
             "version": "2.0",
             "format": "optimized_json",
             "compression": False,
-            "langchain_enriched": self.use_langchain,
+            "langchain_enriched": False,
             "verification_summary": {
                 "overall_status": verification_report.get("overall_status", "unknown"),
                 "stages_passed": verification_report.get("summary", {}).get("stages_passed", 0),
@@ -545,7 +382,7 @@ class DataTransformationPipeline:
             "processing_pipeline": [
                 "data_normalization",
                 "quality_assessment",
-                "langchain_enrichment" if self.use_langchain else "basic_enrichment",
+                "basic_enrichment",
                 "structure_optimization",
                 "indexing",
                 "metadata_generation"

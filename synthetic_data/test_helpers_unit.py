@@ -154,7 +154,7 @@ def test_pipeline_sampling_and_extraction(monkeypatch):
     random.seed(123)
     monkeypatch.delenv("SYNTHETIC_SAMPLING_RATIOS", raising=False)
 
-    pipeline = SyntheticDataPipeline(use_langchain=False, sampling_config={"medium_ratio": 0.6, "low_ratio": 0.2})
+    pipeline = SyntheticDataPipeline(sampling_config={"medium_ratio": 0.6, "low_ratio": 0.2})
 
     empty_sample = pipeline._apply_intelligent_sampling({}, target_count=5)
     assert empty_sample == {}
@@ -194,7 +194,7 @@ def test_pipeline_sampling_and_extraction(monkeypatch):
 
 
 def test_pipeline_report_and_env_flag(monkeypatch):
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     pipeline.execution_state["start_time"] = "2024-01-01T00:00:00"
     pipeline.execution_state["end_time"] = "2024-01-01T00:00:10"
@@ -219,7 +219,7 @@ def test_pipeline_report_and_env_flag(monkeypatch):
 
 
 def test_execute_pipeline_with_mocked_stages(monkeypatch, tmp_path):
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     monkeypatch.setattr(pipeline, "_execute_finding_generation", lambda counts=None: {"proc": _make_sample_findings("proc")})
     monkeypatch.setattr(pipeline, "_execute_correlation_analysis", lambda findings: [{"correlation_type": "simple"}])
@@ -244,7 +244,7 @@ def test_execute_pipeline_with_mocked_stages(monkeypatch, tmp_path):
 
 
 def test_execute_pipeline_triggers_refinement(monkeypatch):
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     monkeypatch.setattr(pipeline, "_execute_finding_generation", lambda counts=None: {"proc": _make_sample_findings("proc")})
     monkeypatch.setattr(pipeline, "_execute_correlation_analysis", lambda findings: [])
@@ -268,7 +268,7 @@ def test_execute_pipeline_triggers_refinement(monkeypatch):
 
 
 def test_refine_findings_regenerates(monkeypatch):
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     class RegeneratingProducer(AggregatingProducer):
         def __init__(self):
@@ -296,7 +296,7 @@ def test_refine_findings_regenerates(monkeypatch):
 
 @pytest.mark.anyio("asyncio")
 async def test_execute_pipeline_async_with_stubs(monkeypatch, tmp_path):
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     monkeypatch.setattr(pipeline, "_execute_finding_generation", lambda counts=None: {"proc": _make_sample_findings("proc")})
     monkeypatch.setattr(pipeline, "_execute_correlation_analysis", lambda findings: [{"correlation_type": "simple"}])

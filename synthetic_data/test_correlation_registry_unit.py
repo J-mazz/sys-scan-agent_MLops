@@ -61,26 +61,19 @@ def test_analyze_all_correlations_uses_sequential_fallback(monkeypatch, minimal_
     assert results[0]["correlation_type"] == "stub"
 
 
-def test_enable_langchain_toggles_optional_producer(monkeypatch):
-    class DummyLangChainProducer(BaseCorrelationProducer):
-        def __init__(self) -> None:
-            super().__init__("langchain")
-
-        def analyze_correlations(self, findings: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:  # pragma: no cover - optional path
-            return []
-
-    monkeypatch.setattr(registry_module, "LangChainCorrelationProducer", DummyLangChainProducer)
-    monkeypatch.setattr(registry_module, "LANGCHAIN_CORRELATION_AVAILABLE", True)
+def test_enable_langchain_is_noop_after_removal():
+    """LangChain path is deprecated; enabling should be a no-op."""
 
     registry = CorrelationRegistry()
-    assert "langchain" not in registry.correlation_producers
+    before = set(registry.correlation_producers.keys())
 
     registry.enable_langchain(True)
-    assert "langchain" in registry.correlation_producers
-    assert isinstance(registry.correlation_producers["langchain"], DummyLangChainProducer)
+    after_enable = set(registry.correlation_producers.keys())
 
     registry.enable_langchain(False)
-    assert "langchain" not in registry.correlation_producers
+    after_disable = set(registry.correlation_producers.keys())
+
+    assert before == after_enable == after_disable
 
 
 def test_register_and_get_correlation_producer_handles_missing(monkeypatch):

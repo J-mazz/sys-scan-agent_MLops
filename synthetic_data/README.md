@@ -41,7 +41,7 @@ SyntheticDataPipeline
 │   ├── ProcessNetworkCorrelationProducer
 │   ├── FileSystemCorrelationProducer
 │   ├── KernelCorrelationProducer
-│   └── LangChainCorrelationProducer (optional)
+│   └── DenseCorrelationProducer
 ├── AdvancedVerificationAgent
 │   ├── Schema Validation
 │   ├── Consistency Check
@@ -50,7 +50,6 @@ SyntheticDataPipeline
 │   └── Quality Scoring
 └── DataTransformationPipeline
     ├── Normalization & Cleaning
-    ├── LangChain Enrichment (optional)
     ├── Structure Optimization
     ├── Indexing
     └── Compression
@@ -78,7 +77,6 @@ result = run_synthetic_data_pipeline(
         "kernel_params": 20,
         "modules": 10
     },
-    use_langchain=True,  # Requires LangChain installation
     compress=True
 )
 ```
@@ -89,7 +87,7 @@ result = run_synthetic_data_pipeline(
 from synthetic_data_pipeline import SyntheticDataPipeline
 
 # Initialize pipeline
-pipeline = SyntheticDataPipeline(use_langchain=True)
+pipeline = SyntheticDataPipeline()
 
 # Execute with full control
 result = pipeline.execute_pipeline(
@@ -318,7 +316,7 @@ result = run_synthetic_data_pipeline(
 ### Performance Benefits
 
 - **Finding Generation**: 10 producers run in parallel instead of sequentially
-- **Correlation Analysis**: Up to 4 correlation producers run in parallel (including LangChain when enabled)
+- **Correlation Analysis**: Up to 4 deterministic correlation producers run in parallel
 - **Resource Safety**: Automatic CPU/memory monitoring prevents system overload
 - **Scalability**: Handles large datasets efficiently for cloud deployment
 
@@ -359,9 +357,7 @@ result = run_synthetic_data_pipeline(
 - `process_network_correlation_producer.py`: Process-network relationship analysis
 - `filesystem_correlation_producer.py`: File system security correlation analysis
 - `kernel_correlation_producer.py`: Kernel parameter correlation analysis
-- `langchain_correlation_producer.py`: LangChain-assisted high-value correlation synthesis
-
-> **Note:** The LangChain correlation producer activates automatically when `use_langchain=True` and the LangChain packages/API credentials are available. Without LangChain, the pipeline falls back to deterministic correlation logic while keeping the broader workflow intact. When the main pipeline runs on the Python 3.14 free-threaded build, LangChain prompts are automatically proxied to a Python 3.12 runtime (default: `.venv-3.12/bin/python`) so you retain no-gil throughput while still calling the LangChain stack.
+- Legacy LangChain-assisted correlation has been fully removed; only deterministic correlation producers remain.
 
 ### Testing & Validation
 

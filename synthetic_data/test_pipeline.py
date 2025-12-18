@@ -12,7 +12,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from synthetic_data.synthetic_data_pipeline import SyntheticDataPipeline
-from synthetic_data.langchain_correlation_producer import get_langchain_bridge_runtime
 
 def test_complete_pipeline():
     """Test the complete synthetic data pipeline."""
@@ -20,7 +19,7 @@ def test_complete_pipeline():
     print("=" * 50)
 
     # Initialize pipeline
-    pipeline = SyntheticDataPipeline(use_langchain=False)  # Disable LangChain for testing
+    pipeline = SyntheticDataPipeline()
 
     print(f"Available producers: {pipeline.get_available_producers()}")
     print(f"Available correlation producers: {pipeline.get_available_correlation_producers()}")
@@ -84,7 +83,7 @@ def test_pipeline_components():
     print("\nTesting Pipeline Components")
     print("-" * 30)
 
-    pipeline = SyntheticDataPipeline(use_langchain=False)
+    pipeline = SyntheticDataPipeline()
 
     # Test producer registry
     producers = pipeline.producer_registry.list_producers()
@@ -106,10 +105,6 @@ def test_pipeline_components():
     # Test verification
     verification = pipeline.verification_agent.verify_dataset(findings, correlations)
     print(f"✓ Verification: {verification.get('overall_status', 'unknown')}")
-
-    if sys.version_info >= (3, 14):
-        bridge_status = get_langchain_bridge_runtime() or "not configured"
-        print(f"✓ LangChain bridge runtime: {bridge_status}")
 
     print("✓ All components working correctly")
 
