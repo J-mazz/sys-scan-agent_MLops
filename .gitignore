@@ -194,6 +194,8 @@ datasets/
 *.jsonl
 *_dataset.json
 *_batch.json
+sys-scan-data/
+
 # TensorFlow/Keras
 *.pb
 *.ckpt
