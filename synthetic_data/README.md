@@ -10,13 +10,13 @@ The synthetic data generation system consists of:
 - **Verifier Agents**: Validate data quality and prevent over-generation
  - **SyntheticDataPipeline Orchestrator**: Coordinates producers, correlations, and advanced verification
 - **Ground Truth Schema**: Defines the structure of generated data
-- **GPU Fine-Tuning**: Notebook for training Qwen3-VL with Unsloth on NVIDIA GPUs
+- **GPU Fine-Tuning**: Notebook for training Qwen3-4B-Instruct-2507 with Unsloth on NVIDIA GPUs
 
 ## Training Pipeline
 
-The `notebooks/finetune_qwen3_security_agent.ipynb` notebook implements the complete GPU-accelerated fine-tuning pipeline:
+The `notebooks/qwen3_security_agent_pipeline.py` generates the notebook that implements the complete fine-tuning pipeline:
 
-- **Model**: Qwen3-VL-2B-Thinking with LoRA adapters
+- **Model**: Qwen3-4B-Instruct-2507 with LoRA adapters
 - **Hardware**: NVIDIA GPUs (A100, L4, T4)
 - **Libraries**: Unsloth, vLLM, TRL
 - **Data Format**: Instruction-response pairs with reasoning traces (`<think>` blocks)
