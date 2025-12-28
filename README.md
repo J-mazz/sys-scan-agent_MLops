@@ -7,7 +7,7 @@ ML pipeline for training specialized security analyst models using synthetic dat
 This repository provides an end-to-end solution for:
 
 - **Synthetic Data Generation**: Generate realistic security scan findings for model training
-- **Fine-Tuning Pipeline**: Fine-tune Qwen3-VL models with LoRA adapters on NVIDIA GPUs using Unsloth
+- **Fine-Tuning Pipeline**: Fine-tune Qwen3-4B-Instruct-2507 model using Unsloth
 - **Embedded Inference**: Deploy optimized models for local security analysis in air-gapped environments
 
 ## Current Strategy
