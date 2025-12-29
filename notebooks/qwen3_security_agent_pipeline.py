@@ -1,267 +1,250 @@
 import json
-import textwrap
 
-# Notebook Structure
-notebook = {
-    "cells": [],
-    "metadata": {
-        "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-        "language_info": {"version": "3.10.12", "name": "python", "mimetype": "text/x-python", "codemirror_mode": {"name": "ipython", "version": 3}},
-        "accelerator": "GPU"
-    },
-    "nbformat": 4, "nbformat_minor": 5
-}
-
-def add_cell(content, type="code"):
-    notebook["cells"].append({
-        "cell_type": type,
-        "metadata": {},
-        "source": textwrap.dedent(content).strip().splitlines(keepends=True),
-        "outputs": [],
-        "execution_count": None
-    })
-
-# --- 1. HEADER ---
-add_cell("""
-    # 🛡️ Qwen3 Security Agent: L4 Speed (vLLM + 4-bit)
-    **Hardware:** NVIDIA L4 (24GB) | **Mode:** 4-bit Quantization + vLLM
-
-    This pipeline is tuned for the L4. It creates space for **vLLM acceleration** by using 4-bit quantization,
-    solving the "minutes per step" slowness while fitting comfortably in 24GB VRAM.
-""", type="markdown")
-
-# --- 2. INSTALL ---
-add_cell("""
-    # @title 1. Install & Setup (L4 Optimized)
-    import os
-
-    # 1. Memory & Speed Tweaks
-    os.environ["UNSLOTH_VLLM_STANDBY"] = "1" # Offload gradients
-    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-
-    # 2. Install UV for fast dependency resolution
-    !pip install --upgrade -qqq uv
-
-    # 3. Install Unsloth + vLLM
-    if "COLAB_" in "".join(os.environ.keys()):
-        # L4 uses the newer vLLM kernel (same as A100)
-        !uv pip install -qqq --upgrade unsloth vllm==0.10.2 numpy pillow torchvision bitsandbytes xformers triton
-    else:
-        !pip install unsloth vllm
-
-    # 4. Pin TRL for GRPO stability
-    !uv pip install transformers==4.56.2
-    !uv pip install --no-deps trl==0.22.2
-
-    print("✅ L4 Environment Ready.")
-""")
-
-# --- 3. CONFIG ---
-add_cell("""
-    # @title 2. Configuration
-    from unsloth import FastLanguageModel, PatchFastRL
-    import torch
-    import os
-    import json
-    import gc
-    import re
-    from google.colab import drive, userdata
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from peft import PeftModel
-    from trl import GRPOConfig, GRPOTrainer
-    from datasets import load_dataset, Dataset
-
-    drive.mount('/content/drive')
-    try: os.environ["HF_TOKEN"] = userdata.get('HF_TOKEN')
-    except: pass
-
-    class Config:
-        base_path = "/content/drive/MyDrive/Qwen3_Security_Agent_Pipeline"
-        sft_adapter = os.path.join(base_path, "sft_checkpoints", "final_sft_adapter")
-        output_dir = os.path.join(base_path, "grpo_checkpoints")
-        cache_dir = os.path.join(base_path, "cache")
-        temp_merge_dir = "/content/merged_sft_model_temp"
-
-        # Model Settings (L4 Balanced)
-        base_model = "unsloth/Qwen3-4B-Instruct-2507"
-        load_in_4bit = True   # <--- 4-bit enables vLLM space on 24GB
-
-        # Training Settings
-        batch_size = 8
-        grad_accum = 1
-        generations = 8       # 8 parallel rollouts (Standard GRPO)
-        steps = 300
-
-    cfg = Config()
-    os.makedirs(cfg.output_dir, exist_ok=True)
-    os.makedirs(cfg.cache_dir, exist_ok=True)
-""")
-
-# --- 4. DATA ---
-add_cell("""
-    # @title 3. Data Pipeline
-    SYSTEM_PROMPT = \"\"\"You are an expert security analysis agent.
-    1. Analyze the provided system scan finding.
-    2. Reason step-by-step about impact, exploitability, and remediation inside <think> tags.
-    3. Output the final structured analysis as a valid JSON object inside <answer> tags.
-
-    The JSON output must strictly follow this schema:
-    {
-      "risk_score": int, "severity": "string", "rationale": "string"
-    }\"\"\"
-
-    def prepare_data():
-        ds = load_dataset("text", data_files={"train": "hf://datasets/jmazz/sys-scan_synthetic_dataset_v2/train.jsonl"}, streaming=True)
-
-        def safe_parse(ex):
-            try:
-                d = json.loads(ex['text'])
-                d['metadata'] = json.dumps(d.get('metadata', {}))
-                return d
-            except: return None
-
-        def format_grpo(x):
-            meta = json.loads(x['metadata'])
-            user = {
-                "title": x.get("title"), "description": x.get("description"),
-                "metadata": meta, "category": x.get("category", "general")
-            }
-            gt = {
-                "risk_score": int(x.get("risk_score", 0)),
-                "severity": x.get("severity", "info").lower(),
-                "rationale": x.get("rationale", "")
-            }
-            return {
-                "prompt": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": json.dumps(user, indent=2)}
-                ],
-                "answer": json.dumps(gt)
-            }
-
-        stream = ds['train'].map(safe_parse, remove_columns=["text"])
-        data = [x for x in stream.take(2940) if x is not None]
-        return Dataset.from_list(data).map(format_grpo)
-
-    train_dataset = prepare_data()
-    print(f"✅ Data Ready: {len(train_dataset)}")
-""")
-
-# --- 5. MODEL (4-BIT vLLM) ---
-add_cell("""
-    # @title 4. Model Setup (4-bit + vLLM)
-    def setup_model():
-        # 1. Merge SFT (CPU Offload)
-        # We perform a high-precision merge first to burn in the SFT weights
-        if not os.path.exists(cfg.temp_merge_dir):
-            print("🔄 Merging SFT Adapters...")
-            base = AutoModelForCausalLM.from_pretrained(cfg.base_model, device_map="cpu", torch_dtype=torch.float16)
-            tok = AutoTokenizer.from_pretrained(cfg.base_model)
-
-            model = PeftModel.from_pretrained(base, cfg.sft_adapter)
-            model = model.merge_and_unload()
-
-            model.save_pretrained(cfg.temp_merge_dir)
-            tok.save_pretrained(cfg.temp_merge_dir)
-            del base, model
-            gc.collect()
-
-        # 2. Reload with vLLM + 4-bit
-        print("🚀 Reloading in 4-bit with vLLM...")
-
-        # Patch for vLLM support in Unsloth
-        PatchFastRL("GRPO", FastLanguageModel)
-
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name = cfg.temp_merge_dir,
-            max_seq_length = 4096,
-            load_in_4bit = True,     # <--- 4-bit Quantization
-            fast_inference = True,   # <--- vLLM Enabled
-            gpu_memory_utilization = 0.6, # 60% of 24GB for Weights + KV Cache
-            cache_dir = cfg.cache_dir
-        )
-
-        model = FastLanguageModel.get_peft_model(
-            model, r=64, lora_alpha=64,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            use_gradient_checkpointing="unsloth", random_state=3407
-        )
-        return model, tokenizer
-
-    model, tokenizer = setup_model()
-    print("✅ Model Ready (vLLM + 4-bit).")
-""")
-
-# --- 6. REWARDS ---
-add_cell("""
-    # @title 5. Rewards
-    def extract_json(t):
-        m = re.search(r"<answer>(.*?)</answer>", t, re.DOTALL)
-        return json.loads(m.group(1)) if m else None
-
-    def json_format_reward(completions, **kwargs):
-        return [1.0 if extract_json(c[0]["content"]) else -1.0 for c in completions]
-
-    def risk_score_reward(completions, answer, **kwargs):
-        rews = []
-        for c, gt in zip(completions, answer):
-            p, g = extract_json(c[0]["content"]), json.loads(gt)
-            if not p: rews.append(0.0); continue
-            try:
-                diff = abs(float(p.get("risk_score", -1)) - float(g.get("risk_score", -1)))
-                rews.append(1.0 - (diff/100.0) + (0.5 if diff<=5 else 0))
-            except: rews.append(0.0)
-        return rews
-
-    def severity_reward(completions, answer, **kwargs):
-        rank = {"info":1, "low":2, "medium":3, "high":4, "critical":5}
-        rews = []
-        for c, gt in zip(completions, answer):
-            p, g = extract_json(c[0]["content"]), json.loads(gt)
-            if not p: rews.append(0.0); continue
-            p_s, g_s = p.get("severity", "").lower(), g.get("severity", "").lower()
-            if p_s == g_s: rews.append(1.0)
-            else: rews.append(max(0, 1.0 - abs(rank.get(p_s,0)-rank.get(g_s,0))*0.25))
-        return rews
-""")
-
-# --- 7. TRAIN ---
-add_cell("""
-    # @title 6. Run Training (vLLM Accelerated)
-    print("🚀 Starting GRPO (vLLM Mode)...")
-
-    args = GRPOConfig(
-        output_dir=cfg.output_dir,
-        learning_rate=5e-6,
-        adam_beta1=0.9, adam_beta2=0.99,
-        warmup_steps=30, logging_steps=1,
-        per_device_train_batch_size=cfg.batch_size,
-        gradient_accumulation_steps=cfg.grad_accum,
-        num_generations=cfg.generations,
-        max_prompt_length=1024,
-        max_completion_length=1024,
-        max_steps=cfg.steps,
-        save_steps=50,
-        report_to="none",
-
-        # vLLM Settings for L4
-        bf16=True, fp16=False,
-        use_vllm=True,
-        vllm_gpu_memory_utilization=0.35, # Reserve space for vLLM context
-    )
-
-    trainer = GRPOTrainer(
-        model=model, processing_class=tokenizer,
-        reward_funcs=[json_format_reward, risk_score_reward, severity_reward],
-        args=args, train_dataset=train_dataset
-    )
-
-    trainer.train()
-    model.save_lora(os.path.join(cfg.output_dir, "final_pipeline_adapter"))
-    print("✅ Done! Saved to Drive.")
-""")
-
-with open("Qwen3_Security_Agent_L4_vLLM.ipynb", "w") as f:
-    json.dump(notebook, f, indent=1)
-
-print("✅ L4 vLLM Notebook Generated: Qwen3_Security_Agent_L4_vLLM.ipynb")
+notebook_content = {
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 🛡️ Qwen3 Security Agent: End-to-End Pipeline\n",
+    "**SFT + GRPO + GGUF Export + Chunking**\n",
+    "\n",
+    "This notebook implements the complete training lifecycle:\n",
+    "1.  **Stage 1 (SFT):** Teaches the model the strict JSON schema requirements.\n",
+    "2.  **Stage 2 (GRPO):** Optimizes reasoning accuracy and severity scoring.\n",
+    "3.  **Production:** Merges adapters, exports GGUF, and **chunks the binary** for PyPi distribution."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# @title 1. Environment & Configuration\n",
+    "import os\n",
+    "import torch\n",
+    "from google.colab import drive\n",
+    "\n",
+    "# 1. Mount Drive\n",
+    "if not os.path.exists('/content/drive'):\n",
+    "    drive.mount('/content/drive')\n",
+    "\n",
+    "# 2. Install Dependencies (L4/A100 Optimized)\n",
+    "!pip install --upgrade -qqq uv\n",
+    "!uv pip install -qqq --upgrade unsloth vllm torchvision bitsandbytes xformers\n",
+    "!uv pip install --no-deps trl==0.22.2 transformers==4.56.2\n",
+    "\n",
+    "# 3. Configuration (Paths & Settings)\n",
+    "class Config:\n",
+    "    base_model = \"unsloth/Qwen2.5-3B-Instruct\"\n",
+    "    project_name = \"Qwen_Security_Agent\"\n",
+    "    \n",
+    "    # --- PATHS (All in Drive) ---\n",
+    "    base_path = f\"/content/drive/MyDrive/{project_name}\"\n",
+    "    sft_output = os.path.join(base_path, \"sft_adapter\")\n",
+    "    grpo_output = os.path.join(base_path, \"grpo_adapter\")\n",
+    "    export_dir = os.path.join(base_path, \"production_models\")\n",
+    "    cache_dir = os.path.join(base_path, \"cache\")\n",
+    "    \n",
+    "cfg = Config()\n",
+    "\n",
+    "for path in [cfg.sft_output, cfg.grpo_output, cfg.export_dir, cfg.cache_dir]:\n",
+    "    os.makedirs(path, exist_ok=True)\n",
+    "\n",
+    "print(f\"✅ Configured. All artifacts will be saved to: {cfg.base_path}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# @title 2. Stage 1: SFT (Format Alignment)\n",
+    "from unsloth import FastLanguageModel\n",
+    "from trl import SFTConfig, SFTTrainer\n",
+    "from datasets import load_dataset\n",
+    "import json\n",
+    "\n",
+    "# 1. Load Base Model\n",
+    "model, tokenizer = FastLanguageModel.from_pretrained(\n",
+    "    model_name = cfg.base_model,\n",
+    "    max_seq_length = 4096,\n",
+    "    load_in_4bit = True,\n",
+    "    max_lora_rank = 64,\n",
+    "    cache_dir = cfg.cache_dir,\n",
+    ")\n",
+    "\n",
+    "model = FastLanguageModel.get_peft_model(\n",
+    "    model, r=64, lora_alpha=64,\n",
+    "    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"],\n",
+    "    use_gradient_checkpointing=\"unsloth\", random_state=3407,\n",
+    ")\n",
+    "\n",
+    "# 2. Formatting\n",
+    "SYSTEM_PROMPT = \"\"\"You are a Senior Cyber-Security Architect.\n",
+    "Analyze the system scan finding and output a JSON object with the following fields:\n",
+    "- risk_score: 0-100 (Integer)\n",
+    "- severity: \"critical\", \"high\", \"medium\", \"low\", \"informational\"\n",
+    "- rationale: A technical explanation.\n",
+    "- mitigation_steps: A list of actions.\n",
+    "\n",
+    "Output ONLY the JSON object.\"\"\"\n",
+    "\n",
+    "def sft_formatting(examples):\n",
+    "    texts = []\n",
+    "    for i in range(len(examples[\"title\"])):\n",
+    "        user = {k: examples[k][i] for k in [\"title\", \"description\", \"metadata\"]}\n",
+    "        gt = {\n",
+    "            \"risk_score\": int(examples[\"risk_score\"][i]),\n",
+    "            \"severity\": examples[\"severity\"][i],\n",
+    "            \"rationale\": examples[\"rationale\"][i],\n",
+    "            \"mitigation_steps\": examples.get(\"mitigation_steps\", [])[i]\n",
+    "        }\n",
+    "        msgs = [\n",
+    "            {\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n",
+    "            {\"role\": \"user\", \"content\": json.dumps(user, indent=2)},\n",
+    "            {\"role\": \"assistant\", \"content\": json.dumps(gt)}\n",
+    "        ]\n",
+    "        texts.append(tokenizer.apply_chat_template(msgs, tokenize=False))\n",
+    "    return {\"text\": texts}\n",
+    "\n",
+    "dataset = load_dataset(\"jmazz/sys-scan_synthetic_dataset_v2\", split=\"train[:500]\", cache_dir=cfg.cache_dir)\n",
+    "\n",
+    "# 3. Train\n",
+    "trainer = SFTTrainer(\n",
+    "    model=model,\n",
+    "    train_dataset=dataset,\n",
+    "    formatting_func=sft_formatting,\n",
+    "    processing_class=tokenizer,\n",
+    "    args=SFTConfig(\n",
+    "        output_dir=cfg.sft_output,\n",
+    "        max_seq_length=4096,\n",
+    "        per_device_train_batch_size=8,\n",
+    "        gradient_accumulation_steps=2,\n",
+    "        max_steps=100,\n",
+    "        learning_rate=2e-4,\n",
+    "        fp16 = not torch.cuda.is_bf16_supported(),\n",
+    "        bf16 = torch.cuda.is_bf16_supported(),\n",
+    "        logging_steps=1,\n",
+    "        report_to=\"none\"\n",
+    "    )\n",
+    ")\n",
+    "trainer.train()\n",
+    "model.save_lora(cfg.sft_output)\n",
+    "print(f\"✅ SFT Saved to: {cfg.sft_output}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# @title 3. Transition: Merge & Reload (vLLM)\n",
+    "from peft import PeftModel\n",
+    "from transformers import AutoModelForCausalLM\n",
+    "import gc\n",
+    "from unsloth import PatchFastRL\n",
+    "\n",
+    "# 1. Clean Memory\n",
+    "del model, trainer\n",
+    "gc.collect()\n",
+    "torch.cuda.empty_cache()\n",
+    "\n",
+    "# 2. Merge SFT Adapter\n",
+    "print(\"🔄 Merging SFT Adapter...\")\n",
+    "base = AutoModelForCausalLM.from_pretrained(cfg.base_model, device_map=\"cpu\", dtype=torch.bfloat16)\n",
+    "model = PeftModel.from_pretrained(base, cfg.sft_output)\n",
+    "model = model.merge_and_unload()\n",
+    "\n",
+    "# Save to local temporary path for vLLM (faster than Drive)\n",
+    "temp_merge_path = \"/content/merged_sft_temp\"\n",
+    "model.save_pretrained(temp_merge_path)\n",
+    "tokenizer.save_pretrained(temp_merge_path)\n",
+    "del base, model\n",
+    "gc.collect()\n",
+    "\n",
+    "# 3. Reload with vLLM + GRPO\n",
+    "print(\"🚀 Reloading with vLLM acceleration...\")\n",
+    "PatchFastRL(\"GRPO\", FastLanguageModel)\n",
+    "\n",
+    "model, tokenizer = FastLanguageModel.from_pretrained(\n",
+    "    model_name=temp_merge_path,\n",
+    "    max_seq_length=4096,\n",
+    "    load_in_4bit=False, # Bfloat16 for GRPO stability\n",
+    "    fast_inference=True,\n",
+    "    gpu_memory_utilization=0.6,\n",
+    ")\n",
+    "\n",
+    "model = FastLanguageModel.get_peft_model(\n",
+    "    model, r=64, lora_alpha=64,\n",
+    "    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"],\n",
+    "    use_gradient_checkpointing=\"unsloth\", random_state=3407\n",
+    ")\n",
+    "print(\"✅ Ready for GRPO.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# @title 4. Stage 2: GRPO (Reasoning Optimization)\n",
+    "from trl import GRPOConfig, GRPOTrainer\n",
+    "import re\n",
+    "\n",
+    "# Rewards\n",
+    "def soft_extract(text, key, type_fn):\n",
+    "    m = re.search(r'\"' + re.escape(key) + r'\"\\s*:\\s*\"?([^\",\\}\\n]+)\"?', text)\n",
+    "    if m: return type_fn(re.sub(r\"[^0-9]\", \"\", m.group(1)) if type_fn == int else m.group(1))\n",
+    "    return None\n",
+    "\n",
+    "def json_validity_reward(completions, **kwargs):\n",
+    "    rewards = []\n",
+    "    for c in completions:\n",
+    "        try:\n",
+    "            json.loads(c[0][\"content\"])\n",
+    "            rewards.append(1.0)\n",
+    "        except:\n",
+    "            rewards.append(0.5 if \"{\" in c[0][\"content\"] else 0.0)\n",
+    "    return rewards\n",
+    "\n",
+    "def risk_accuracy_reward(completions, answer, **kwargs):\n",
+    "    rewards = []\n",
+    "    for c, gt in zip(completions, answer):\n",
+    "        pred = soft_extract(c[0][\"content\"], \"risk_score\", int)\n",
+    "        gt_score = json.loads(gt).get(\"risk_score\", 0)\n",
+    "        if pred is not None:\n",
+    "            diff = abs(pred - gt_score)\n",
+    "            rewards.append(max(0.0, 1.0 - (diff / 100.0)))\n",
+    "        else: rewards.append(0.0)\n",
+    "    return rewards\n",
+    "\n",
+    "def severity_accuracy_reward(completions, answer, **kwargs):\n",
+    "    rewards = []\n",
+    "    for c, gt in zip(completions, answer):\n",
+    "        pred = soft_extract(c[0][\"content\"], \"severity\", str)\n",
+    "        gt_sev = json.loads(gt).get(\"severity\", \"info\").lower()\n",
+    "        rewards.append(1.0 if pred and pred.lower() == gt_sev else 0.0)\n",
+    "    return rewards\n",
+    "\n",
+    "# Data Prep\n",
+    "def format_grpo(x):\n",
+    "    return {\n",
+    "        \"prompt\": [\n",
+    "            {\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n",
+    "            {\"role\": \"user\", \"content\": json.dumps({k: x[k] for k in [\"title\", \"description\", \"metadata\"]}, indent=2)}\n",
+    "        ],\n",
+    "        \"answer\": json.dumps({\"risk_score\": x.get(\"risk_score\", 0), \"severity\": x.get(\"severity\", \"info\")})\n",
+    "    }\n",
+    "\n",
+    "dataset = load_dataset(\"jmazz/sys-scan_synthetic_dataset_v2\", split=\"train\", cache_dir=cfg.cache_dir).map(format_grpo)\n",
+    "\n",
+    "# Training\n",
+    "trainer = GRPOTrainer(\n",
+    "    model=model,\n",
+    "    processing_class=tokenizer,\n",
+    "    reward_funcs=[json_

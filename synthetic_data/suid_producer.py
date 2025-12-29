@@ -35,11 +35,20 @@ class SuidProducer(BaseProducer):
             "/usr/bin/umount"
         ]
 
-        binary_path = random.choice(normal_binaries)
+        from .augmentation_utils import unique_token, random_username
+
+        # Occasionally generate variant paths to increase diversity
+        if random.random() < 0.4:
+            binary_path = random.choice(normal_binaries)
+        else:
+            binary_path = f"/usr/local/{random.choice(['bin','sbin'])}/{unique_token('bin')}"
+
         is_expected = random.random() < 0.8  # Most are expected
 
+        package = random.choice([None, "coreutils", "shadow", "openssh", "sudo"]) if random.random() < 0.6 else None
+
         return {
-            "id": f"suid_{uuid.uuid4().hex[:8]}",
+            "id": f"suid_{uuid.uuid4().hex[:8]}_{unique_token('i')}",
             "title": "SUID/SGID binary",
             "severity": "low" if is_expected else "medium",
             "risk_score": 30 if is_expected else 50,
@@ -48,6 +57,8 @@ class SuidProducer(BaseProducer):
             "metadata": {
                 "expected": "true" if is_expected else "false",
                 "path": binary_path,
+                "installed_package": package,
+                "reported_by_user": random_username() if random.random() < 0.2 else None,
                 **self._sample_distro_profile(),
             },
             "operational_error": False,
@@ -88,10 +99,15 @@ class SuidProducer(BaseProducer):
             "/usr/bin/chage"
         ]
 
-        binary_path = random.choice(suspicious_binaries)
+        from .augmentation_utils import unique_token, random_username
+
+        if random.random() < 0.5:
+            binary_path = random.choice(suspicious_binaries)
+        else:
+            binary_path = f"/opt/{random.choice(['evil','tmp','backup'])}/{unique_token('s')}.bin"
 
         return {
-            "id": f"suid_{uuid.uuid4().hex[:8]}",
+            "id": f"suid_{uuid.uuid4().hex[:8]}_{unique_token()}",
             "title": "SUID/SGID binary",
             "severity": "medium",
             "risk_score": 50,
@@ -99,6 +115,7 @@ class SuidProducer(BaseProducer):
             "description": "Binary has SUID or SGID bit set",
             "metadata": {
                 "path": binary_path,
+                "detected_by": random_username() if random.random() < 0.25 else None,
                 **self._sample_distro_profile(),
             },
             "operational_error": False,
@@ -139,10 +156,15 @@ class SuidProducer(BaseProducer):
             "/usr/bin/cat"
         ]
 
-        binary_path = random.choice(malicious_binaries)
+        from .augmentation_utils import unique_token
+
+        if random.random() < 0.6:
+            binary_path = random.choice(malicious_binaries)
+        else:
+            binary_path = f"/tmp/{unique_token('mal')}/{random.choice(['sh','py','pl'])}"
 
         return {
-            "id": f"suid_{uuid.uuid4().hex[:8]}",
+            "id": f"suid_{uuid.uuid4().hex[:8]}_{unique_token('h')}",
             "title": "SUID/SGID binary",
             "severity": "high",
             "risk_score": 80,
@@ -150,6 +172,7 @@ class SuidProducer(BaseProducer):
             "description": "Binary has SUID or SGID bit set",
             "metadata": {
                 "path": binary_path,
+                "evidence": "modified" if random.random() < 0.4 else None,
                 **self._sample_distro_profile(),
             },
             "operational_error": False,

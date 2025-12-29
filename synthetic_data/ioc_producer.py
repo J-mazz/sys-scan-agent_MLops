@@ -46,13 +46,16 @@ class IocProducer(BaseProducer):
         ]
 
     def _random_indicator(self, severity: str = "low") -> Dict[str, str]:
-        tlds = ["com", "net", "org", "io", "dev", "cloud"]
+        from .augmentation_utils import unique_token
+
+        tlds = ["com", "net", "org", "io", "dev", "cloud", "biz", "xyz"]
         octet = random.randint(10, 254)
         n = random.randint(1, 9999)
         dom = random.choice(self.malicious_domains).format(tld=random.choice(tlds), n=n)
         ip = random.choice(self.malicious_ips).format(octet=octet)
         url = random.choice(self.malicious_urls).format(dom=dom, ip=ip, n=n)
-        hash_value = random.choice(self.malicious_hashes)
+        # occasionally synthesize a pseudo-random hash-like token
+        hash_value = random.choice(self.malicious_hashes) if random.random() < 0.6 else unique_token('h') + random.choice(['a','b','c','d'])
         yara_rule = random.choice(self.yara_rules)
         reg_key = random.choice(self.registry_keys)
 
@@ -72,8 +75,11 @@ class IocProducer(BaseProducer):
             "critical": [0.1, 0.25, 0.25, 0.25, 0.1, 0.05]
         }.get(severity, [1/6.0] * 6)
 
-        return random.choices(options, weights=weight, k=1)[0]
-
+        choice = random.choices(options, weights=weight, k=1)[0]
+        # make some indicator values unique/suffixed occasionally
+        if choice.get('type') in {'domain','url','ip'} and random.random() < 0.2:
+            choice['value'] = f"{choice['value']}-{unique_token('i')}"
+        return choice
     def _generate_normal_ioc(self) -> Dict[str, Any]:
         """Generate a normal IOC finding."""
         normal_processes = [
@@ -89,8 +95,9 @@ class IocProducer(BaseProducer):
 
         indicator = self._random_indicator()
 
+        from .augmentation_utils import unique_token
         return {
-            "id": f"ioc_{uuid.uuid4().hex[:8]}",
+            "id": f"ioc_{uuid.uuid4().hex[:8]}_{unique_token()}",
             "title": "Process IOC Detected",
             "severity": "info",
             "risk_score": 10,
@@ -148,8 +155,9 @@ class IocProducer(BaseProducer):
 
         indicator = self._random_indicator()
 
+        from .augmentation_utils import unique_token
         return {
-            "id": f"ioc_{uuid.uuid4().hex[:8]}",
+            "id": f"ioc_{uuid.uuid4().hex[:8]}_{unique_token()}",
             "title": "Process IOC Detected",
             "severity": "low",
             "risk_score": 30,
@@ -202,8 +210,9 @@ class IocProducer(BaseProducer):
 
         indicator = self._random_indicator(severity="high")
 
+        from .augmentation_utils import unique_token
         return {
-            "id": f"ioc_{uuid.uuid4().hex[:8]}",
+            "id": f"ioc_{uuid.uuid4().hex[:8]}_{unique_token('h')}",
             "title": "Process IOC Detected",
             "severity": "high",
             "risk_score": 80,

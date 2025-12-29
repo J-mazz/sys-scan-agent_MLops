@@ -37,13 +37,18 @@ class KernelParamsProducer(BaseProducer):
         param = random.choice(normal_params)
         param_name = param.split("/")[-1]
 
-        # Most normal params should be properly configured
-        current_value = "1" if random.random() < 0.8 else "0"
+        # Most normal params should be properly configured but include occasional numeric jitter
+        if random.random() < 0.85:
+            current_value = "1"
+        else:
+            current_value = str(random.choice([0, 1, 2]))
         desired_value = "1"
 
+        from .augmentation_utils import random_username, perturb_text
+
         return {
-            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}",
-            "title": param_name,
+            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}_{random.randint(0,9999)}",
+            "title": perturb_text(param_name),
             "severity": "info",
             "risk_score": 10,
             "base_severity_score": 10,
@@ -52,6 +57,7 @@ class KernelParamsProducer(BaseProducer):
                 "current": current_value,
                 "desired": desired_value,
                 "status": "ok" if current_value == desired_value else "mismatch",
+                "modified_by": random_username() if random.random() < 0.05 else None,
                 **self._sample_distro_profile(),
             },
             "operational_error": False,
@@ -92,15 +98,20 @@ class KernelParamsProducer(BaseProducer):
         param = random.choice(suspicious_params)
         param_name = param.split("/")[-1]
 
-        # These are often misconfigured
-        current_value = "1" if random.random() < 0.6 else "0"
+        # These are often misconfigured - add numeric variation and context
+        if random.random() < 0.6:
+            current_value = "1"
+        else:
+            current_value = str(random.randint(0,3))
         desired_value = "0" if param_name in ["ip_forward", "accept_source_route", "accept_redirects", "secure_redirects"] else "1"
 
-        severity = "low" if abs(int(current_value) - int(desired_value)) == 0 else "medium"
+        severity = "low" if abs(int(int(current_value) if current_value.isdigit() else 0) - int(desired_value)) == 0 else "medium"
         risk_score = 30 if severity == "low" else 50
 
+        from .augmentation_utils import random_username
+
         return {
-            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}",
+            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}_{random.randint(0,9999)}",
             "title": param_name,
             "severity": severity,
             "risk_score": risk_score,
@@ -110,6 +121,8 @@ class KernelParamsProducer(BaseProducer):
                 "current": current_value,
                 "desired": desired_value,
                 "status": "mismatch" if current_value != desired_value else "ok",
+                "changed_in": "sysctl.conf" if random.random() < 0.4 else "runtime",
+                "changed_by": random_username() if random.random() < 0.1 else None,
                 **self._sample_distro_profile(),
             },
             "operational_error": False,
@@ -153,8 +166,10 @@ class KernelParamsProducer(BaseProducer):
         current_value = "0"  # Usually the insecure value
         desired_value = "1"  # Usually the secure value
 
+        from .augmentation_utils import unique_token
+
         return {
-            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}",
+            "id": f"kernel_{param_name}_{uuid.uuid4().hex[:8]}_{unique_token('h')}",
             "title": param_name,
             "severity": "high",
             "risk_score": 80,
@@ -164,8 +179,10 @@ class KernelParamsProducer(BaseProducer):
                 "current": current_value,
                 "desired": desired_value,
                 "status": "mismatch",
+                "evidence_id": unique_token('e') if random.random() < 0.4 else None,
                 **self._sample_distro_profile(),
             },
+
             "operational_error": False,
             "category": "kernel_params",
             "tags": ["kernel", "security", "configuration", "critical", "vulnerability"],

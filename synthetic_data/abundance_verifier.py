@@ -43,6 +43,10 @@ class AbundanceVerifier(BaseVerifier):
         host_issues = self._verify_host_diversity(findings, total_findings)
         issues.extend(host_issues)
 
+        # Check field-level diversity health (title, rationale, ports, commands)
+        diversity_issues = self._verify_diversity_health(findings, total_findings)
+        issues.extend(diversity_issues)
+
         return len(issues) == 0, issues
 
     def _verify_category_distribution(self, findings: List[Dict[str, Any]], total: int) -> List[str]:
@@ -145,5 +149,25 @@ class AbundanceVerifier(BaseVerifier):
                     f"Host profile {most_common} dominates: {count/len(host_pairs):.1%} of findings (max {self.max_category_percentage:.1%})"
                 )
             )
+
+        return issues
+
+    def _verify_diversity_health(self, findings: List[Dict[str, Any]], total: int) -> List[str]:
+        """Check basic diversity metrics across key fields and flag low-variance issues."""
+        issues = []
+        fields = [
+            (lambda f: f.get("title", ""), "title"),
+            (lambda f: f.get("rationale", ""), "rationale"),
+            (lambda f: str(f.get("metadata", {}).get("port", "")), "port"),
+            (lambda f: str(f.get("metadata", {}).get("command", "")), "command"),
+        ]
+
+        for extractor, name in fields:
+            values = [extractor(f) for f in findings]
+            unique = len(set(values))
+            ratio = unique / total if total else 0
+            # threshold: at least 40% unique values per field
+            if ratio < 0.4:
+                issues.append(self._log_issue(f"Low diversity for field '{name}': {unique}/{total} unique ({ratio:.1%})"))
 
         return issues
